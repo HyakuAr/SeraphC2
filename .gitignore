@@ -177,9 +177,10 @@ aws-credentials
 
 # Google Cloud credentials
 gcloud/
-*.json
 service-account*.json
 gcp-*.json
+*-credentials.json
+credentials.json
 
 # Azure credentials
 .azure/

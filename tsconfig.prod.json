@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "sourceMap": false,
+    "removeComments": true,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "tsBuildInfoFile": null
+  },
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "tests/**/*",
+    "scripts/test-*.ts",
+    "scripts/performance-test.ts",
+    "node_modules",
+    "web-client"
+  ]
+}
