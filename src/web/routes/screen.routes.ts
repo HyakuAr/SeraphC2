@@ -62,16 +62,16 @@ export function createScreenRoutes(config: ScreenRoutesConfig): Router {
           data: result,
         });
       } catch (error) {
-        logger.error('Failed to get monitor list', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: req.params['implantId'],
-          operatorId: req.operator?.id,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
           message: 'Failed to get monitor list',
-          error: error instanceof Error ? error.message : 'Unknown error',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     }
@@ -124,16 +124,16 @@ export function createScreenRoutes(config: ScreenRoutesConfig): Router {
           data: result,
         });
       } catch (error) {
-        logger.error('Failed to take screenshot', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: req.params['implantId'],
-          operatorId: req.operator?.id,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
           message: 'Failed to take screenshot',
-          error: error instanceof Error ? error.message : 'Unknown error',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     }
@@ -190,16 +190,16 @@ export function createScreenRoutes(config: ScreenRoutesConfig): Router {
           },
         });
       } catch (error) {
-        logger.error('Failed to start screen stream', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: req.params['implantId'],
-          operatorId: req.operator?.id,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
           message: 'Failed to start screen stream',
-          error: error instanceof Error ? error.message : 'Unknown error',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     }
@@ -249,16 +249,16 @@ export function createScreenRoutes(config: ScreenRoutesConfig): Router {
           },
         });
       } catch (error) {
-        logger.error('Failed to stop screen stream', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: req.params['implantId'],
-          operatorId: req.operator?.id,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
           message: 'Failed to stop screen stream',
-          error: error instanceof Error ? error.message : 'Unknown error',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     }
@@ -311,16 +311,16 @@ export function createScreenRoutes(config: ScreenRoutesConfig): Router {
           message: result.message,
         });
       } catch (error) {
-        logger.error('Failed to update stream config', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: req.params['implantId'],
-          operatorId: req.operator?.id,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
           message: 'Failed to update stream config',
-          error: error instanceof Error ? error.message : 'Unknown error',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     }
@@ -348,16 +348,16 @@ export function createScreenRoutes(config: ScreenRoutesConfig): Router {
           data: status,
         });
       } catch (error) {
-        logger.error('Failed to get stream status', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: req.params['implantId'],
-          operatorId: req.operator?.id,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
           message: 'Failed to get stream status',
-          error: error instanceof Error ? error.message : 'Unknown error',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     }
@@ -384,15 +384,16 @@ export function createScreenRoutes(config: ScreenRoutesConfig): Router {
           },
         });
       } catch (error) {
-        logger.error('Failed to get active streams', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          operatorId: req.operator?.id,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
           message: 'Failed to get active streams',
-          error: error instanceof Error ? error.message : 'Unknown error',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     }

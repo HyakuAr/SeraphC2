@@ -80,10 +80,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         data: script,
       });
     } catch (error) {
-      logger.error('Failed to create PowerShell script', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId: (req as any).user?.id,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -116,10 +117,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         count: scripts.length,
       });
     } catch (error) {
-      logger.error('Failed to get PowerShell scripts', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId: (req as any).user?.id,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -155,10 +157,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         data: script,
       });
     } catch (error) {
-      logger.error('Failed to get PowerShell script', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        scriptId: req.params['id'],
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -201,10 +204,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         data: script,
       });
     } catch (error) {
-      logger.error('Failed to update PowerShell script', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        scriptId: req.params['id'],
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -234,10 +238,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         message: 'PowerShell script deleted successfully',
       });
     } catch (error) {
-      logger.error('Failed to delete PowerShell script', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        scriptId: req.params['id'],
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -276,10 +281,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         data: favorite,
       });
     } catch (error) {
-      logger.error('Failed to create PowerShell favorite', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId: (req as any).user?.id,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -312,10 +318,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         count: favorites.length,
       });
     } catch (error) {
-      logger.error('Failed to get PowerShell favorites', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId: (req as any).user?.id,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -345,10 +352,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         data: favorite,
       });
     } catch (error) {
-      logger.error('Failed to use PowerShell favorite', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        favoriteId: req.params['id'],
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -379,10 +387,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         data: favorite,
       });
     } catch (error) {
-      logger.error('Failed to update PowerShell favorite', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        favoriteId: req.params['id'],
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -412,10 +421,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         message: 'PowerShell favorite deleted successfully',
       });
     } catch (error) {
-      logger.error('Failed to delete PowerShell favorite', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        favoriteId: req.params['id'],
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -454,10 +464,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         data: commandResult,
       });
     } catch (error) {
-      logger.error('Failed to execute PowerShell command', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId: (req as any).user?.id,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -511,10 +522,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         data: commandResult,
       });
     } catch (error) {
-      logger.error('Failed to execute PowerShell script', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId: (req as any).user?.id,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -556,10 +568,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         data: commandResult,
       });
     } catch (error) {
-      logger.error('Failed to load PowerShell module', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId: (req as any).user?.id,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -596,10 +609,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         data: commandResult,
       });
     } catch (error) {
-      logger.error('Failed to list PowerShell modules', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId: req.params['implantId'],
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -632,10 +646,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         data: session,
       });
     } catch (error) {
-      logger.error('Failed to create PowerShell session', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId: (req as any).user?.id,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -665,10 +680,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         count: sessions.length,
       });
     } catch (error) {
-      logger.error('Failed to get PowerShell sessions', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId: (req as any).user?.id,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -704,10 +720,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         data: session,
       });
     } catch (error) {
-      logger.error('Failed to get PowerShell session', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        sessionId: req.params['id'],
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -738,10 +755,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         data: session,
       });
     } catch (error) {
-      logger.error('Failed to update PowerShell session', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        sessionId: req.params['id'],
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -772,10 +790,11 @@ export function createPowerShellRoutes(config: PowerShellRoutesConfig): Router {
         message: 'PowerShell session closed and deleted successfully',
       });
     } catch (error) {
-      logger.error('Failed to delete PowerShell session', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        sessionId: req.params['id'],
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,

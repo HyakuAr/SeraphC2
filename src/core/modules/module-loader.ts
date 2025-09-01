@@ -9,6 +9,7 @@ import { Worker } from 'worker_threads';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { writeFileSync, unlinkSync, existsSync } from 'fs';
+import { createErrorWithContext } from '../../types/errors';
 import {
   Module,
   ModuleStatus,
@@ -186,10 +187,13 @@ export class ModuleLoader extends EventEmitter {
         sandboxed,
       });
     } catch (error) {
-      this.logger.error('Failed to load module', {
-        moduleId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.logger.error(
+        'Failed to load module',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          moduleId,
+        }
+      );
       throw error;
     }
   }
@@ -338,21 +342,27 @@ export class ModuleLoader extends EventEmitter {
         };
         this.emit('moduleExecutionFailed', failedEvent);
 
-        this.logger.error('Module execution failed', {
-          moduleId,
-          capability,
-          executionId,
-          error: execution.error,
-        });
+        this.logger.error(
+          'Module execution failed',
+          typeof execution.error === 'string' ? new Error(execution.error) : execution.error,
+          {
+            moduleId,
+            capability,
+            executionId,
+          }
+        );
 
         throw executionError;
       }
     } catch (error) {
-      this.logger.error('Failed to execute module', {
-        moduleId,
-        capability,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.logger.error(
+        'Failed to execute module',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          moduleId,
+          capability,
+        }
+      );
       throw error;
     }
   }
@@ -418,10 +428,13 @@ export class ModuleLoader extends EventEmitter {
         executionCount: instance.executionCount,
       });
     } catch (error) {
-      this.logger.error('Failed to unload module', {
-        moduleId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.logger.error(
+        'Failed to unload module',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          moduleId,
+        }
+      );
       throw error;
     }
   }
@@ -512,10 +525,13 @@ export class ModuleLoader extends EventEmitter {
         issuer: module.signature.issuer,
       });
     } catch (error) {
-      this.logger.error('Module signature verification failed', {
-        moduleId: module.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.logger.error(
+        'Module signature verification failed',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          moduleId: module.id,
+        }
+      );
       throw error;
     }
   }
@@ -557,9 +573,8 @@ export class ModuleLoader extends EventEmitter {
 
       // Set up worker event handlers
       worker.on('error', error => {
-        this.logger.error('Worker error', {
+        this.logger.error('Worker error', error, {
           moduleId: module.id,
-          error: error.message,
         });
       });
 

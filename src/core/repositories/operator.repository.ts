@@ -4,6 +4,8 @@
 
 import { DatabaseConnection } from '../database/connection';
 import { OperatorRepository } from './interfaces';
+
+export { OperatorRepository };
 import {
   Operator,
   CreateOperatorData,

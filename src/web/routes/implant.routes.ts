@@ -46,9 +46,11 @@ export function createImplantRoutes(config: ImplantRoutesConfig): Router {
         count: enhancedImplants.length,
       });
     } catch (error) {
-      logger.error('Failed to fetch implants', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       res.status(500).json({
         success: false,
@@ -73,9 +75,11 @@ export function createImplantRoutes(config: ImplantRoutesConfig): Router {
         },
       });
     } catch (error) {
-      logger.error('Failed to fetch implant stats', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       res.status(500).json({
         success: false,
@@ -119,10 +123,11 @@ export function createImplantRoutes(config: ImplantRoutesConfig): Router {
         data: enhancedImplant,
       });
     } catch (error) {
-      logger.error('Failed to fetch implant details', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId: req.params['id'],
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -153,10 +158,11 @@ export function createImplantRoutes(config: ImplantRoutesConfig): Router {
         message: 'Implant disconnected successfully',
       });
     } catch (error) {
-      logger.error('Failed to disconnect implant', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId: req.params['id'],
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,

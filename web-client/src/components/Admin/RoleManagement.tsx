@@ -89,16 +89,16 @@ const RoleManagement: React.FC = () => {
         rbacService.getRoles(),
       ]);
 
-      if (operatorsResponse.success) {
+      if (operatorsResponse.success && operatorsResponse.data) {
         setOperators(operatorsResponse.data);
       } else {
-        throw new Error(operatorsResponse.error);
+        throw new Error(operatorsResponse.error || 'Failed to fetch operators');
       }
 
-      if (rolesResponse.success) {
+      if (rolesResponse.success && rolesResponse.data) {
         setRoles(rolesResponse.data);
       } else {
-        throw new Error(rolesResponse.error);
+        throw new Error(rolesResponse.error || 'Failed to fetch roles');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');

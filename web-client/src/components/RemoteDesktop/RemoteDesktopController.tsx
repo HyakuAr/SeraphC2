@@ -91,12 +91,12 @@ export const RemoteDesktopController: React.FC<RemoteDesktopControllerProps> = (
   // Keyboard event listeners
   useEffect(() => {
     if (isActive && keyboardFocused && config.enableKeyboardInput) {
-      const handleKeyDown = (event: KeyboardEvent) => {
+      const handleKeyDown = (event: globalThis.KeyboardEvent) => {
         event.preventDefault();
         sendKeyboardInput(remoteDesktopService.convertDOMKeyboardEvent(event as any, 'down'));
       };
 
-      const handleKeyUp = (event: KeyboardEvent) => {
+      const handleKeyUp = (event: globalThis.KeyboardEvent) => {
         event.preventDefault();
         sendKeyboardInput(remoteDesktopService.convertDOMKeyboardEvent(event as any, 'up'));
       };
@@ -337,9 +337,8 @@ export const RemoteDesktopController: React.FC<RemoteDesktopControllerProps> = (
                     implantId={implantId}
                     onError={onError}
                     onImageRef={(ref: HTMLImageElement | null) => {
-                      if (ref) {
-                        screenImageRef.current = ref;
-                      }
+                      (screenImageRef as React.MutableRefObject<HTMLImageElement | null>).current =
+                        ref;
                     }}
                     onMouseClick={isMouseCaptured ? handleScreenMouseClick : undefined}
                     onMouseMove={isMouseCaptured ? handleScreenMouseMove : undefined}

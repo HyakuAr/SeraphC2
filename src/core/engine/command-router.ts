@@ -7,6 +7,7 @@ import { EventEmitter } from 'events';
 import { CommandRepository } from '../repositories/interfaces';
 import { PostgresCommandRepository } from '../repositories/command.repository';
 import { ImplantManager } from './implant-manager';
+import { createErrorWithContext } from '../../types/errors';
 import {
   Command,
   CommandType,
@@ -113,12 +114,10 @@ export class CommandRouter extends EventEmitter {
 
       return command;
     } catch (error) {
-      this.logger.error('Failed to queue command', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-        type,
-      });
+      this.logger.error(
+        'Command router operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -147,10 +146,10 @@ export class CommandRouter extends EventEmitter {
 
       return allCommands;
     } catch (error) {
-      this.logger.error('Failed to get pending commands', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-      });
+      this.logger.error(
+        'Command router operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -208,10 +207,10 @@ export class CommandRouter extends EventEmitter {
         context,
       });
     } catch (error) {
-      this.logger.error('Failed to start command execution', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        commandId,
-      });
+      this.logger.error(
+        'Command router operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -259,10 +258,10 @@ export class CommandRouter extends EventEmitter {
         executionTime,
       });
     } catch (error) {
-      this.logger.error('Failed to complete command execution', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        commandId,
-      });
+      this.logger.error(
+        'Command router operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -312,7 +311,7 @@ export class CommandRouter extends EventEmitter {
         // Clean up execution context
         this.executionContexts.delete(commandId);
 
-        this.logger.error('Command execution failed', {
+        this.logger.error('Command execution failed', undefined, {
           commandId,
           implantId: context.implantId,
           error: errorMessage,
@@ -326,10 +325,10 @@ export class CommandRouter extends EventEmitter {
         executionTime,
       });
     } catch (error) {
-      this.logger.error('Failed to handle command failure', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        commandId,
-      });
+      this.logger.error(
+        'Command router operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -389,10 +388,10 @@ export class CommandRouter extends EventEmitter {
         command,
       });
     } catch (error) {
-      this.logger.error('Failed to cancel command', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        commandId,
-      });
+      this.logger.error(
+        'Command router operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -488,10 +487,10 @@ export class CommandRouter extends EventEmitter {
         executionTime,
       });
     } catch (error) {
-      this.logger.error('Failed to handle command timeout', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        commandId,
-      });
+      this.logger.error(
+        'Command router operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
     }
   }
 
@@ -524,10 +523,13 @@ export class CommandRouter extends EventEmitter {
           CommandStatus.FAILED
         );
       } catch (error) {
-        this.logger.error('Failed to update command status during cleanup', {
-          commandId: queueItem.command.id,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
+        this.logger.error(
+          'Failed to update command status during cleanup',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {
+            commandId: queueItem.command.id,
+          }
+        );
       }
     });
 

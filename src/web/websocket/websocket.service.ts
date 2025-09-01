@@ -117,10 +117,13 @@ export class WebSocketService {
 
         next();
       } catch (error) {
-        this.logger.error('WebSocket authentication failed', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          socketId: socket.id,
-        });
+        this.logger.error(
+          'WebSocket authentication failed',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {
+            socketId: socket.id,
+          }
+        );
         next(new Error('Authentication failed'));
       }
     });
@@ -165,7 +168,7 @@ export class WebSocketService {
         'updatePresence',
         (data: { status?: string; currentImplant?: string; currentAction?: string }) => {
           if (authSocket) {
-            this.collaborationService.updateOperatorPresence(authSocket.userId, data);
+            this.collaborationService.updateOperatorPresence(authSocket.userId, data as any);
           }
         }
       );
@@ -355,10 +358,13 @@ export class WebSocketService {
       await this.sendImplantStats(socket);
       await this.sendImplantList(socket);
     } catch (error) {
-      this.logger.error('Failed to send initial data', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        socketId: socket.id,
-      });
+      this.logger.error(
+        'Failed to send initial data',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {
+          socketId: socket.id,
+        }
+      );
     }
   }
 
@@ -376,10 +382,11 @@ export class WebSocketService {
         timestamp: new Date(),
       });
     } catch (error) {
-      this.logger.error('Failed to send implant stats', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        socketId: socket.id,
-      });
+      this.logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
     }
   }
 
@@ -407,10 +414,11 @@ export class WebSocketService {
         timestamp: new Date(),
       });
     } catch (error) {
-      this.logger.error('Failed to send implant list', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        socketId: socket.id,
-      });
+      this.logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
     }
   }
 
@@ -442,11 +450,11 @@ export class WebSocketService {
         timestamp: new Date(),
       });
     } catch (error) {
-      this.logger.error('Failed to send implant details', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        socketId: socket.id,
-        implantId,
-      });
+      this.logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       socket.emit('error', {
         message: 'Failed to fetch implant details',
@@ -469,9 +477,11 @@ export class WebSocketService {
         timestamp: new Date(),
       });
     } catch (error) {
-      this.logger.error('Failed to broadcast implant stats', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      this.logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
     }
   }
 
@@ -499,9 +509,11 @@ export class WebSocketService {
         timestamp: new Date(),
       });
     } catch (error) {
-      this.logger.error('Failed to broadcast implant list', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      this.logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
     }
   }
 
@@ -578,11 +590,11 @@ export class WebSocketService {
         timestamp: new Date(),
       });
     } catch (error) {
-      this.logger.error('Failed to send command history', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        socketId: socket.id,
-        implantId,
-      });
+      this.logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       socket.emit('error', {
         message: 'Failed to fetch command history',
@@ -603,10 +615,11 @@ export class WebSocketService {
         timestamp: new Date(),
       });
     } catch (error) {
-      this.logger.error('Failed to send active commands', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        socketId: socket.id,
-      });
+      this.logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       socket.emit('error', {
         message: 'Failed to fetch active commands',

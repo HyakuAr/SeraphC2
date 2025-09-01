@@ -108,11 +108,10 @@ export class FileManager extends EventEmitter {
         totalDirectories: 0,
       };
     } catch (error) {
-      this.logger.error('Failed to list files', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        request,
-        operatorId,
-      });
+      this.logger.error(
+        'File manager operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -189,11 +188,10 @@ export class FileManager extends EventEmitter {
 
       return transferId;
     } catch (error) {
-      this.logger.error('Failed to upload file', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        request,
-        operatorId,
-      });
+      this.logger.error(
+        'File manager operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -259,11 +257,10 @@ export class FileManager extends EventEmitter {
 
       return transferId;
     } catch (error) {
-      this.logger.error('Failed to download file', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        request,
-        operatorId,
-      });
+      this.logger.error(
+        'File manager operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -329,11 +326,10 @@ export class FileManager extends EventEmitter {
         commandId: command.id,
       });
     } catch (error) {
-      this.logger.error('Failed to perform file operation', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        request,
-        operatorId,
-      });
+      this.logger.error(
+        'File manager operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -362,11 +358,10 @@ export class FileManager extends EventEmitter {
         operatorId,
       });
     } catch (error) {
-      this.logger.error('Failed to cancel transfer', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        transferId,
-        operatorId,
-      });
+      this.logger.error(
+        'File manager operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -735,13 +730,10 @@ export class FileManager extends EventEmitter {
 
       return result;
     } catch (error) {
-      this.logger.error('File integrity verification failed', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        remotePath,
-        algorithm,
-        operatorId,
-      });
+      this.logger.error(
+        'File manager operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }

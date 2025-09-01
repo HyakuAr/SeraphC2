@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { createErrorWithContext } from '../../types/errors';
 import {
   Module,
   ModuleExecution,
@@ -130,11 +131,14 @@ export class ModuleLoaderService extends EventEmitter {
 
       return loadedModule;
     } catch (error) {
-      this.logger.error('Failed to load module', {
-        moduleId: request.moduleId,
-        implantId: request.implantId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.logger.error(
+        'Failed to load module',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          moduleId: request.moduleId,
+          implantId: request.implantId,
+        }
+      );
       throw error;
     }
   }
@@ -240,12 +244,15 @@ export class ModuleLoaderService extends EventEmitter {
 
       return execution;
     } catch (error) {
-      this.logger.error('Module execution failed', {
-        moduleId: request.moduleId,
-        implantId: request.implantId,
-        capability: request.capability,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.logger.error(
+        'Module execution failed',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          moduleId: request.moduleId,
+          implantId: request.implantId,
+          capability: request.capability,
+        }
+      );
 
       // Emit execution failed event
       const failedEvent: ModuleExecutionFailedEvent = {
@@ -347,11 +354,14 @@ export class ModuleLoaderService extends EventEmitter {
 
       return true;
     } catch (error) {
-      this.logger.error('Failed to unload module', {
-        moduleId: request.moduleId,
-        implantId: request.implantId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.logger.error(
+        'Failed to unload module',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          moduleId: request.moduleId,
+          implantId: request.implantId,
+        }
+      );
       throw error;
     }
   }
@@ -441,10 +451,13 @@ export class ModuleLoaderService extends EventEmitter {
         issuer: module.signature.issuer,
       });
     } catch (error) {
-      this.logger.error('Module signature verification failed', {
-        moduleId: module.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.logger.error(
+        'Module signature verification failed',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          moduleId: module.id,
+        }
+      );
       throw error;
     }
   }
@@ -475,11 +488,14 @@ export class ModuleLoaderService extends EventEmitter {
 
       return sandboxPath;
     } catch (error) {
-      this.logger.error('Failed to prepare sandbox environment', {
-        moduleId: module.id,
-        implantId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.logger.error(
+        'Failed to prepare sandbox environment',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          moduleId: module.id,
+          implantId,
+        }
+      );
       throw error;
     }
   }

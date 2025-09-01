@@ -455,8 +455,12 @@ export class DistributedSessionService extends EventEmitter {
     try {
       switch (event.type) {
         case 'created':
-          if (event.data) {
-            await this.handleRemoteSessionCreation(event.sessionId, event.data, event.version);
+          if (event.data && event.data.operatorId) {
+            await this.handleRemoteSessionCreation(
+              event.sessionId,
+              event.data as SessionData,
+              event.version
+            );
           }
           break;
         case 'updated':

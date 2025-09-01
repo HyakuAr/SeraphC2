@@ -88,33 +88,41 @@ export const ScreenMonitor: React.FC<ScreenMonitorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   // WebSocket connection for real-time frames
-  const { isConnected, sendMessage } = useWebSocket({
-    onMessage: useCallback(
-      (data: any) => {
-        if (data.type === 'screen_frame' && data.implantId === implantId) {
-          const frame: ScreenStreamFrame = {
-            ...data.frame,
-            timestamp: new Date(data.frame.timestamp),
-          };
-          setCurrentFrame(frame);
+  const { socket, isConnected } = useWebSocket();
 
-          // Update stream status
-          if (streamStatus) {
-            setStreamStatus(prev =>
-              prev
-                ? {
-                    ...prev,
-                    frameCount: frame.frameId,
-                    lastFrameTime: frame.timestamp,
-                  }
-                : null
-            );
-          }
+  // Handle WebSocket messages
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleMessage = (data: any) => {
+      if (data.type === 'screen_frame' && data.implantId === implantId) {
+        const frame: ScreenStreamFrame = {
+          ...data.frame,
+          timestamp: new Date(data.frame.timestamp),
+        };
+        setCurrentFrame(frame);
+
+        // Update stream status
+        if (streamStatus) {
+          setStreamStatus(prev =>
+            prev
+              ? {
+                  ...prev,
+                  frameCount: frame.frameId,
+                  lastFrameTime: frame.timestamp,
+                }
+              : null
+          );
         }
-      },
-      [implantId, streamStatus]
-    ),
-  });
+      }
+    };
+
+    socket.on('screen_frame', handleMessage);
+
+    return () => {
+      socket.off('screen_frame', handleMessage);
+    };
+  }, [socket, implantId, streamStatus]);
 
   // Load monitors on component mount
   useEffect(() => {
@@ -226,8 +234,7 @@ export const ScreenMonitor: React.FC<ScreenMonitorProps> = ({
         });
 
         // Subscribe to WebSocket frames
-        sendMessage({
-          type: 'subscribe_screen_stream',
+        socket?.emit('subscribe_screen_stream', {
           implantId,
         });
       } else {
@@ -256,8 +263,7 @@ export const ScreenMonitor: React.FC<ScreenMonitorProps> = ({
         setCurrentFrame(null);
 
         // Unsubscribe from WebSocket frames
-        sendMessage({
-          type: 'unsubscribe_screen_stream',
+        socket?.emit('unsubscribe_screen_stream', {
           implantId,
         });
       } else {
@@ -373,7 +379,8 @@ export const ScreenMonitor: React.FC<ScreenMonitorProps> = ({
                     <Box textAlign="center">
                       <img
                         ref={ref => {
-                          imageRef.current = ref;
+                          (imageRef as React.MutableRefObject<HTMLImageElement | null>).current =
+                            ref;
                           onImageRef?.(ref);
                         }}
                         src={imageUrl}

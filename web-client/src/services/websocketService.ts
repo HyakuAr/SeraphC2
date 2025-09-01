@@ -2,7 +2,7 @@
  * WebSocket service for real-time communication with SeraphC2 server
  */
 
-import { io, Socket } from 'socket.io-client';
+import io, { Socket } from 'socket.io-client';
 
 export interface ImplantStats {
   total: number;
@@ -144,6 +144,13 @@ export class WebSocketService {
    */
   isConnected(): boolean {
     return this.socket?.connected || false;
+  }
+
+  /**
+   * Get the socket instance
+   */
+  getSocket(): Socket | null {
+    return this.socket;
   }
 
   /**

@@ -6,8 +6,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
-  TreeView,
-  TreeItem,
   Typography,
   IconButton,
   CircularProgress,
@@ -17,6 +15,8 @@ import {
   ListItemIcon,
   ListItemText,
 } from '@mui/material';
+import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
+import { TreeItem } from '@mui/x-tree-view/TreeItem';
 import {
   ExpandMore as ExpandMoreIcon,
   ChevronRight as ChevronRightIcon,
@@ -126,7 +126,7 @@ export const FileTreeView: React.FC<FileTreeViewProps> = ({
   );
 
   // Handle node toggle
-  const handleNodeToggle = async (event: React.SyntheticEvent, nodeIds: string[]) => {
+  const handleNodeToggle = async (event: React.SyntheticEvent | null, nodeIds: string[]) => {
     setExpanded(nodeIds);
 
     // Find newly expanded nodes that need loading
@@ -191,7 +191,7 @@ export const FileTreeView: React.FC<FileTreeViewProps> = ({
   };
 
   // Handle node select
-  const handleNodeSelect = (event: React.SyntheticEvent, nodeId: string) => {
+  const handleNodeSelect = (event: React.SyntheticEvent | null, nodeId: string) => {
     const node = findNodeByPath(treeData, nodeId);
     if (node) {
       if (node.isDirectory) {
@@ -260,7 +260,7 @@ export const FileTreeView: React.FC<FileTreeViewProps> = ({
     return (
       <TreeItem
         key={node.path}
-        nodeId={node.path}
+        itemId={node.path}
         label={
           <Box
             sx={{
@@ -338,16 +338,14 @@ export const FileTreeView: React.FC<FileTreeViewProps> = ({
       </Box>
 
       {/* Tree View */}
-      <TreeView
-        defaultCollapseIcon={<ExpandMoreIcon />}
-        defaultExpandIcon={<ChevronRightIcon />}
-        expanded={expanded}
-        onNodeToggle={handleNodeToggle}
-        onNodeSelect={handleNodeSelect}
+      <SimpleTreeView
+        expandedItems={expanded}
+        onExpandedItemsChange={(event, itemIds) => handleNodeToggle(event, itemIds)}
+        onSelectedItemsChange={(event, itemId) => handleNodeSelect(event, itemId || '')}
         sx={{ flexGrow: 1, overflowY: 'auto' }}
       >
         {treeData.map(node => renderTreeItem(node))}
-      </TreeView>
+      </SimpleTreeView>
 
       {/* Context Menu */}
       <Menu

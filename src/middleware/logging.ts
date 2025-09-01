@@ -53,7 +53,7 @@ export function requestLoggingMiddleware(req: Request, res: Response, next: Next
 
   // Override res.end to log response
   const originalEnd = res.end;
-  res.end = function (chunk?: any, encoding?: any, cb?: any) {
+  res.end = function (chunk?: any, encoding?: any, cb?: any): Response {
     const duration = Date.now() - req.startTime;
 
     // Log API request with performance metrics
@@ -98,7 +98,7 @@ export function requestLoggingMiddleware(req: Request, res: Response, next: Next
     }
 
     // Call original end method
-    originalEnd.call(this, chunk, encoding, cb);
+    return originalEnd.call(this, chunk, encoding, cb);
   };
 
   next();

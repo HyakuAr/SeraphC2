@@ -7,6 +7,7 @@ import { PowerShellScriptRepository } from '../services/powershell.service';
 import { DatabaseConnection } from '../database/connection';
 import { Logger } from '../../utils/logger';
 
+import { createErrorWithContext } from '../../types/errors';
 export class PostgresPowerShellScriptRepository implements PowerShellScriptRepository {
   private dbConnection: DatabaseConnection;
   private logger: Logger;
@@ -38,10 +39,8 @@ export class PostgresPowerShellScriptRepository implements PowerShellScriptRepos
       const result = await this.dbConnection.query(query, values);
       return this.mapRowToScript(result.rows[0]);
     } catch (error) {
-      this.logger.error('Failed to create PowerShell script', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        script: script.name,
-      });
+      const errorWithContext = createErrorWithContext(error, {});
+      this.logger.error('Failed to create PowerShell script', errorWithContext);
       throw error;
     }
   }
@@ -53,10 +52,8 @@ export class PostgresPowerShellScriptRepository implements PowerShellScriptRepos
       const result = await this.dbConnection.query(query, [id]);
       return result.rows.length > 0 ? this.mapRowToScript(result.rows[0]) : null;
     } catch (error) {
-      this.logger.error('Failed to find PowerShell script by ID', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        id,
-      });
+      const errorWithContext = createErrorWithContext(error, { id });
+      this.logger.error('Failed to find PowerShell script by ID', errorWithContext);
       throw error;
     }
   }
@@ -68,10 +65,8 @@ export class PostgresPowerShellScriptRepository implements PowerShellScriptRepos
       const result = await this.dbConnection.query(query, [operatorId]);
       return result.rows.map((row: any) => this.mapRowToScript(row));
     } catch (error) {
-      this.logger.error('Failed to find PowerShell scripts by operator', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { operatorId });
+      this.logger.error('Failed to find PowerShell scripts by operator', errorWithContext);
       throw error;
     }
   }
@@ -87,10 +82,8 @@ export class PostgresPowerShellScriptRepository implements PowerShellScriptRepos
       const result = await this.dbConnection.query(query, [tags]);
       return result.rows.map((row: any) => this.mapRowToScript(row));
     } catch (error) {
-      this.logger.error('Failed to find PowerShell scripts by tags', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        tags,
-      });
+      const errorWithContext = createErrorWithContext(error, { tags });
+      this.logger.error('Failed to find PowerShell scripts by tags', errorWithContext);
       throw error;
     }
   }
@@ -142,10 +135,8 @@ export class PostgresPowerShellScriptRepository implements PowerShellScriptRepos
       }
       return this.mapRowToScript(result.rows[0]);
     } catch (error) {
-      this.logger.error('Failed to update PowerShell script', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        id,
-      });
+      const errorWithContext = createErrorWithContext(error, { id });
+      this.logger.error('Failed to update PowerShell script', errorWithContext);
       throw error;
     }
   }
@@ -159,10 +150,8 @@ export class PostgresPowerShellScriptRepository implements PowerShellScriptRepos
         throw new Error(`PowerShell script with ID ${id} not found`);
       }
     } catch (error) {
-      this.logger.error('Failed to delete PowerShell script', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        id,
-      });
+      const errorWithContext = createErrorWithContext(error, { id });
+      this.logger.error('Failed to delete PowerShell script', errorWithContext);
       throw error;
     }
   }
@@ -178,10 +167,8 @@ export class PostgresPowerShellScriptRepository implements PowerShellScriptRepos
       const result = await this.dbConnection.query(searchQuery, [`%${query}%`]);
       return result.rows.map((row: any) => this.mapRowToScript(row));
     } catch (error) {
-      this.logger.error('Failed to search PowerShell scripts', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        query,
-      });
+      const errorWithContext = createErrorWithContext(error, { query });
+      this.logger.error('Failed to search PowerShell scripts', errorWithContext);
       throw error;
     }
   }

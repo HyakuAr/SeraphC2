@@ -150,9 +150,10 @@ export class C2Engine extends EventEmitter {
         availableProtocols: this.protocolManager.getAvailableProtocols(),
       });
     } catch (error) {
-      this.logger.error('Failed to start C2Engine', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      this.logger.error(
+        'C2 engine operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -183,9 +184,10 @@ export class C2Engine extends EventEmitter {
       this.emit('engineStopped');
       this.logger.info('C2Engine stopped successfully');
     } catch (error) {
-      this.logger.error('Failed to stop C2Engine', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      this.logger.error(
+        'C2 engine operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -388,7 +390,7 @@ export class C2Engine extends EventEmitter {
   private setupProtocolHandlers(config: C2EngineConfig): void {
     // Setup WebSocket handler if configured and HTTP server is available
     if (config.protocols?.websocket && this.httpServer) {
-      const wsHandler = new WebSocketHandler(this.httpServer, config.protocols.websocket);
+      const wsHandler = new WebSocketHandler(config.protocols.websocket);
       this.protocolManager.registerHandler(Protocol.WEBSOCKET, wsHandler);
     }
 
@@ -427,10 +429,10 @@ export class C2Engine extends EventEmitter {
 
         await this.protocolManager.sendMessage(implant.id, ackMessage, connectionInfo.protocol);
       } catch (error) {
-        this.logger.error('Failed to handle registration message', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: message.implantId,
-        });
+        this.logger.error(
+          'C2 engine operation failed',
+          error instanceof Error ? error : new Error('Unknown error')
+        );
       }
     });
 
@@ -467,10 +469,10 @@ export class C2Engine extends EventEmitter {
           }
         }
       } catch (error) {
-        this.logger.error('Failed to handle heartbeat message', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: message.implantId,
-        });
+        this.logger.error(
+          'C2 engine operation failed',
+          error instanceof Error ? error : new Error('Unknown error')
+        );
       }
     });
 
@@ -488,10 +490,10 @@ export class C2Engine extends EventEmitter {
           );
         }
       } catch (error) {
-        this.logger.error('Failed to handle response message', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: message.implantId,
-        });
+        this.logger.error(
+          'C2 engine operation failed',
+          error instanceof Error ? error : new Error('Unknown error')
+        );
       }
     });
   }
@@ -555,10 +557,10 @@ export class C2Engine extends EventEmitter {
       try {
         await this.messageRouter.routeMessage(data.message, data.connectionInfo);
       } catch (error) {
-        this.logger.error('Failed to route protocol message', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          messageId: data.message.id,
-        });
+        this.logger.error(
+          'C2 engine operation failed',
+          error instanceof Error ? error : new Error('Unknown error')
+        );
       }
     });
 
@@ -637,7 +639,11 @@ export class C2Engine extends EventEmitter {
    */
   getProtocolHealth(): any[] {
     this.ensureRunning();
-    return this.protocolManager.getProtocolHealth();
+    const health = this.protocolManager.getProtocolHealth();
+    return Object.entries(health).map(([protocol, status]) => ({
+      protocol,
+      ...status,
+    }));
   }
 
   /**

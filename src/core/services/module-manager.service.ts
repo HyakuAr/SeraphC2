@@ -6,6 +6,7 @@
 import { EventEmitter } from 'events';
 import { v4 as uuidv4 } from 'uuid';
 import { createHash } from 'crypto';
+import { createErrorWithContext } from '../../types/errors';
 import {
   Module,
   ModuleExecution,
@@ -82,9 +83,8 @@ export class ModuleManagerService extends EventEmitter {
         networkModuleId: networkModule.id,
       });
     } catch (error) {
-      this.logger.error('Failed to initialize built-in modules', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Failed to initialize built-in modules', errorWithContext);
     }
   }
 
@@ -188,10 +188,8 @@ export class ModuleManagerService extends EventEmitter {
       // Load external module through module loader
       return await this.moduleLoader.loadModule(request);
     } catch (error) {
-      this.logger.error('Failed to load module via manager', {
-        moduleId: request.moduleId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error, { moduleId: request.moduleId });
+      this.logger.error('Failed to load module via manager', errorWithContext);
       throw error;
     }
   }
@@ -234,11 +232,11 @@ export class ModuleManagerService extends EventEmitter {
       // Execute external module through module loader
       return await this.moduleLoader.executeModule(request);
     } catch (error) {
-      this.logger.error('Failed to execute module via manager', {
+      const errorWithContext = createErrorWithContext(error, {
         moduleId: request.moduleId,
         capability: request.capability,
-        error: error instanceof Error ? error.message : String(error),
       });
+      this.logger.error('Failed to execute module via manager', errorWithContext);
       throw error;
     }
   }
@@ -371,12 +369,15 @@ export class ModuleManagerService extends EventEmitter {
       module.lastExecuted = new Date();
       module.failureCount++;
 
-      this.logger.error('Built-in module execution failed', {
-        moduleId: request.moduleId,
-        capability: request.capability,
-        duration,
-        error: execution.error,
-      });
+      this.logger.error(
+        'Built-in module execution failed',
+        typeof execution.error === 'string' ? new Error(execution.error) : execution.error,
+        {
+          moduleId: request.moduleId,
+          capability: request.capability,
+          duration,
+        }
+      );
 
       return execution;
     }
@@ -411,10 +412,8 @@ export class ModuleManagerService extends EventEmitter {
       // Unload external module through module loader
       return await this.moduleLoader.unloadModule(request);
     } catch (error) {
-      this.logger.error('Failed to unload module via manager', {
-        moduleId: request.moduleId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error, { moduleId: request.moduleId });
+      this.logger.error('Failed to unload module via manager', errorWithContext);
       throw error;
     }
   }
@@ -502,9 +501,8 @@ export class ModuleManagerService extends EventEmitter {
 
       return module;
     } catch (error) {
-      this.logger.error('Failed to install module', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Failed to install module', errorWithContext);
       throw error;
     }
   }
@@ -536,10 +534,8 @@ export class ModuleManagerService extends EventEmitter {
 
       return true;
     } catch (error) {
-      this.logger.error('Failed to uninstall module', {
-        moduleId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error, { moduleId });
+      this.logger.error('Failed to uninstall module', errorWithContext);
       throw error;
     }
   }

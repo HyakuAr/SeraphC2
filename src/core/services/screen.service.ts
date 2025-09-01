@@ -5,6 +5,7 @@
 
 import { EventEmitter } from 'events';
 import { CommandManager } from '../engine/command-manager';
+import { createErrorWithContext } from '../../types/errors';
 import {
   MonitorInfo,
   ScreenStreamConfig,
@@ -86,11 +87,8 @@ export class ScreenService extends EventEmitter {
 
       return response;
     } catch (error) {
-      this.logger.error('Failed to get monitor information', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId });
+      this.logger.error('Failed to get monitor information', errorWithContext);
       throw error;
     }
   }
@@ -139,11 +137,8 @@ export class ScreenService extends EventEmitter {
 
       return screenshot;
     } catch (error) {
-      this.logger.error('Failed to take screenshot', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId });
+      this.logger.error('Failed to take screenshot', errorWithContext);
       throw error;
     }
   }
@@ -224,11 +219,8 @@ export class ScreenService extends EventEmitter {
         };
       }
     } catch (error) {
-      this.logger.error('Failed to start screen stream', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId });
+      this.logger.error('Failed to start screen stream', errorWithContext);
       throw error;
     }
   }
@@ -290,11 +282,8 @@ export class ScreenService extends EventEmitter {
         totalDataSent,
       };
     } catch (error) {
-      this.logger.error('Failed to stop screen stream', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId });
+      this.logger.error('Failed to stop screen stream', errorWithContext);
       throw error;
     }
   }
@@ -350,11 +339,8 @@ export class ScreenService extends EventEmitter {
         message,
       };
     } catch (error) {
-      this.logger.error('Failed to update screen stream config', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId });
+      this.logger.error('Failed to update screen stream config', errorWithContext);
       throw error;
     }
   }
@@ -407,11 +393,8 @@ export class ScreenService extends EventEmitter {
         frameData,
       });
     } catch (error) {
-      this.logger.error('Failed to process screen frame', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        frameId: frameData.frameId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId });
+      this.logger.error('Failed to process screen frame', errorWithContext);
     }
   }
 
@@ -477,7 +460,8 @@ export class ScreenService extends EventEmitter {
         bitsPerPixel: monitor.BitsPerPixel || 32,
       }));
     } catch (error) {
-      this.logger.error('Failed to parse monitor list', { error, output });
+      const errorWithContext = createErrorWithContext(error, { output });
+      this.logger.error('Failed to parse monitor list', errorWithContext);
       return [];
     }
   }
@@ -499,7 +483,8 @@ export class ScreenService extends EventEmitter {
         capturedMouseCursor: data.capturedMouseCursor || false,
       };
     } catch (error) {
-      this.logger.error('Failed to parse screenshot result', { error, output });
+      const errorWithContext = createErrorWithContext(error, { output });
+      this.logger.error('Failed to parse screenshot result', errorWithContext);
       throw new Error('Invalid screenshot data received from implant');
     }
   }

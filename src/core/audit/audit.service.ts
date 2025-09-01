@@ -115,11 +115,10 @@ export class AuditService extends EventEmitter {
         ...event.details,
       });
     } catch (error) {
-      this.logger.error('Failed to log audit event', {
-        error: (error as Error).message,
-        stack: (error as Error).stack,
-        event,
-      });
+      this.logger.error(
+        'Audit operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
     }
   }
 

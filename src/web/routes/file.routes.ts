@@ -8,6 +8,7 @@ import multer from 'multer';
 import { FileManager } from '../../core/engine/file-manager';
 import { AuthMiddleware } from '../../core/auth/auth.middleware';
 import { Logger } from '../../utils/logger';
+import { createErrorWithContext } from '../../types/errors';
 
 export interface FileRoutesConfig {
   fileManager: FileManager;
@@ -52,11 +53,13 @@ export function createFileRoutes(config: FileRoutesConfig): Router {
         data: listing,
       });
     } catch (error) {
-      logger.error('Failed to list files', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId: (req as any).user?.id,
-        body: req.body,
-      });
+      logger.error(
+        'Failed to list files',
+        createErrorWithContext(error, {
+          operatorId: (req as any).user?.id,
+          body: req.body,
+        })
+      );
 
       return res.status(500).json({
         success: false,
@@ -103,11 +106,11 @@ export function createFileRoutes(config: FileRoutesConfig): Router {
           },
         });
       } catch (error) {
-        logger.error('Failed to upload file', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          operatorId: (req as any).user?.id,
-          body: req.body,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
@@ -146,11 +149,11 @@ export function createFileRoutes(config: FileRoutesConfig): Router {
         },
       });
     } catch (error) {
-      logger.error('Failed to download file', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId: (req as any).user?.id,
-        body: req.body,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -198,11 +201,11 @@ export function createFileRoutes(config: FileRoutesConfig): Router {
         message: `File ${operation} operation initiated successfully`,
       });
     } catch (error) {
-      logger.error('Failed to perform file operation', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId: (req as any).user?.id,
-        body: req.body,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -233,11 +236,11 @@ export function createFileRoutes(config: FileRoutesConfig): Router {
         message: 'Transfer cancelled successfully',
       });
     } catch (error) {
-      logger.error('Failed to cancel transfer', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        transferId: req.params['id'],
-        operatorId: (req as any).user?.id,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -274,10 +277,11 @@ export function createFileRoutes(config: FileRoutesConfig): Router {
         data: progress,
       });
     } catch (error) {
-      logger.error('Failed to get transfer progress', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        transferId: req.params['id'],
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -299,9 +303,11 @@ export function createFileRoutes(config: FileRoutesConfig): Router {
         count: activeTransfers.length,
       });
     } catch (error) {
-      logger.error('Failed to get active transfers', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -344,11 +350,11 @@ export function createFileRoutes(config: FileRoutesConfig): Router {
         },
       });
     } catch (error) {
-      logger.error('Failed to initialize chunked upload', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId: (req as any).user?.id,
-        body: req.body,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -389,11 +395,11 @@ export function createFileRoutes(config: FileRoutesConfig): Router {
           message: 'Chunk uploaded successfully',
         });
       } catch (error) {
-        logger.error('Failed to upload chunk', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          operatorId: (req as any).user?.id,
-          body: req.body,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
@@ -427,11 +433,11 @@ export function createFileRoutes(config: FileRoutesConfig): Router {
           message: 'Upload finalized successfully',
         });
       } catch (error) {
-        logger.error('Failed to finalize upload', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          operatorId: (req as any).user?.id,
-          body: req.body,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
@@ -463,11 +469,11 @@ export function createFileRoutes(config: FileRoutesConfig): Router {
         message: 'Transfer paused successfully',
       });
     } catch (error) {
-      logger.error('Failed to pause transfer', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        transferId: req.params['id'],
-        operatorId: (req as any).user?.id,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -498,11 +504,11 @@ export function createFileRoutes(config: FileRoutesConfig): Router {
         message: 'Transfer resumed successfully',
       });
     } catch (error) {
-      logger.error('Failed to resume transfer', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        transferId: req.params['id'],
-        operatorId: (req as any).user?.id,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -549,11 +555,11 @@ export function createFileRoutes(config: FileRoutesConfig): Router {
         },
       });
     } catch (error) {
-      logger.error('Failed to calculate checksum', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId: (req as any).user?.id,
-        body: req.body,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,
@@ -597,11 +603,11 @@ export function createFileRoutes(config: FileRoutesConfig): Router {
         data: integrityCheck,
       });
     } catch (error) {
-      logger.error('Failed to verify file integrity', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId: (req as any).user?.id,
-        body: req.body,
-      });
+      logger.error(
+        'Error occurred',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {}
+      );
 
       return res.status(500).json({
         success: false,

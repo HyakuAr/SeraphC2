@@ -139,10 +139,10 @@ export class ImplantManager extends EventEmitter {
 
       return implant;
     } catch (error) {
-      this.logger.error('Failed to register implant', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        hostname: data.hostname,
-      });
+      this.logger.error(
+        'Implant manager operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -204,10 +204,10 @@ export class ImplantManager extends EventEmitter {
         remoteAddress,
       });
     } catch (error) {
-      this.logger.error('Failed to process heartbeat', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId: data.implantId,
-      });
+      this.logger.error(
+        'Implant manager operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -264,10 +264,10 @@ export class ImplantManager extends EventEmitter {
         reason,
       });
     } catch (error) {
-      this.logger.error('Failed to disconnect implant', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-      });
+      this.logger.error(
+        'Implant manager operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -374,9 +374,10 @@ export class ImplantManager extends EventEmitter {
         }
       }
     } catch (error) {
-      this.logger.error('Error checking inactive implants', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      this.logger.error(
+        'Implant manager operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
     }
   }
 

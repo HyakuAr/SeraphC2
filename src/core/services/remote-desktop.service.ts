@@ -5,6 +5,7 @@
 
 import { EventEmitter } from 'events';
 import { CommandManager } from '../engine/command-manager';
+import { createErrorWithContext } from '../../types/errors';
 import {
   MouseClickEvent,
   MouseMoveEvent,
@@ -93,12 +94,8 @@ export class RemoteDesktopService extends EventEmitter {
         timestamp: new Date(),
       };
     } catch (error) {
-      this.logger.error('Failed to send mouse click', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-        mouseEvent,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId, mouseEvent });
+      this.logger.error('Failed to send mouse click', errorWithContext);
       throw error;
     }
   }
@@ -156,12 +153,8 @@ export class RemoteDesktopService extends EventEmitter {
         timestamp: new Date(),
       };
     } catch (error) {
-      this.logger.error('Failed to send mouse move', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-        mouseEvent,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId, mouseEvent });
+      this.logger.error('Failed to send mouse move', errorWithContext);
       throw error;
     }
   }
@@ -220,12 +213,8 @@ export class RemoteDesktopService extends EventEmitter {
         timestamp: new Date(),
       };
     } catch (error) {
-      this.logger.error('Failed to send keyboard input', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-        keyEvent,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId, keyEvent });
+      this.logger.error('Failed to send keyboard input', errorWithContext);
       throw error;
     }
   }
@@ -276,11 +265,8 @@ export class RemoteDesktopService extends EventEmitter {
         timestamp: new Date(),
       };
     } catch (error) {
-      this.logger.error('Failed to disable local input', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId });
+      this.logger.error('Failed to disable local input', errorWithContext);
       throw error;
     }
   }
@@ -331,11 +317,8 @@ export class RemoteDesktopService extends EventEmitter {
         timestamp: new Date(),
       };
     } catch (error) {
-      this.logger.error('Failed to enable local input', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId });
+      this.logger.error('Failed to enable local input', errorWithContext);
       throw error;
     }
   }
@@ -378,12 +361,8 @@ export class RemoteDesktopService extends EventEmitter {
         config,
       };
     } catch (error) {
-      this.logger.error('Failed to initialize remote desktop', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-        config,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId, config });
+      this.logger.error('Failed to initialize remote desktop', errorWithContext);
       throw error;
     }
   }
@@ -418,11 +397,8 @@ export class RemoteDesktopService extends EventEmitter {
         timestamp: new Date(),
       };
     } catch (error) {
-      this.logger.error('Failed to terminate remote desktop', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId });
+      this.logger.error('Failed to terminate remote desktop', errorWithContext);
       throw error;
     }
   }

@@ -267,7 +267,7 @@ export class ConnectionPoolService extends EventEmitter {
     queries: Array<{ text: string; params?: any[] }>
   ): Promise<any[]> {
     const client = await this.getConnection();
-    const results: T[] = [];
+    const results: any[] = [];
 
     try {
       await client.query('BEGIN');

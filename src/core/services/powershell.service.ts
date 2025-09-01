@@ -5,6 +5,7 @@
 
 import { EventEmitter } from 'events';
 import { Logger } from '../../utils/logger';
+import { createErrorWithContext } from '../../types/errors';
 import {
   PowerShellScript,
   PowerShellFavorite,
@@ -95,11 +96,8 @@ export class PowerShellService extends EventEmitter {
       this.emit('scriptCreated', script);
       return script;
     } catch (error) {
-      this.logger.error('Failed to create PowerShell script', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        name,
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { name, operatorId });
+      this.logger.error('Failed to create PowerShell script', errorWithContext);
       throw error;
     }
   }
@@ -128,10 +126,8 @@ export class PowerShellService extends EventEmitter {
       this.emit('scriptUpdated', script);
       return script;
     } catch (error) {
-      this.logger.error('Failed to update PowerShell script', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        scriptId: id,
-      });
+      const errorWithContext = createErrorWithContext(error, {});
+      this.logger.error('Failed to update PowerShell script', errorWithContext);
       throw error;
     }
   }
@@ -143,10 +139,8 @@ export class PowerShellService extends EventEmitter {
       this.logger.info('PowerShell script deleted', { scriptId: id });
       this.emit('scriptDeleted', { id });
     } catch (error) {
-      this.logger.error('Failed to delete PowerShell script', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        scriptId: id,
-      });
+      const errorWithContext = createErrorWithContext(error, {});
+      this.logger.error('Failed to delete PowerShell script', errorWithContext);
       throw error;
     }
   }
@@ -181,11 +175,8 @@ export class PowerShellService extends EventEmitter {
       this.emit('favoriteCreated', favorite);
       return favorite;
     } catch (error) {
-      this.logger.error('Failed to create PowerShell favorite', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        name,
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { name, operatorId });
+      this.logger.error('Failed to create PowerShell favorite', errorWithContext);
       throw error;
     }
   }
@@ -221,10 +212,8 @@ export class PowerShellService extends EventEmitter {
       this.emit('favoriteUpdated', favorite);
       return favorite;
     } catch (error) {
-      this.logger.error('Failed to update PowerShell favorite', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        favoriteId: id,
-      });
+      const errorWithContext = createErrorWithContext(error, {});
+      this.logger.error('Failed to update PowerShell favorite', errorWithContext);
       throw error;
     }
   }
@@ -236,10 +225,8 @@ export class PowerShellService extends EventEmitter {
       this.logger.info('PowerShell favorite deleted', { favoriteId: id });
       this.emit('favoriteDeleted', { id });
     } catch (error) {
-      this.logger.error('Failed to delete PowerShell favorite', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        favoriteId: id,
-      });
+      const errorWithContext = createErrorWithContext(error, {});
+      this.logger.error('Failed to delete PowerShell favorite', errorWithContext);
       throw error;
     }
   }
@@ -254,10 +241,8 @@ export class PowerShellService extends EventEmitter {
       this.emit('favoriteUsed', favorite);
       return favorite;
     } catch (error) {
-      this.logger.error('Failed to use PowerShell favorite', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        favoriteId: id,
-      });
+      const errorWithContext = createErrorWithContext(error, {});
+      this.logger.error('Failed to use PowerShell favorite', errorWithContext);
       throw error;
     }
   }
@@ -288,11 +273,8 @@ export class PowerShellService extends EventEmitter {
       this.emit('sessionCreated', session);
       return session;
     } catch (error) {
-      this.logger.error('Failed to create PowerShell session', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId });
+      this.logger.error('Failed to create PowerShell session', errorWithContext);
       throw error;
     }
   }
@@ -322,10 +304,8 @@ export class PowerShellService extends EventEmitter {
       this.emit('sessionUpdated', session);
       return session;
     } catch (error) {
-      this.logger.error('Failed to update PowerShell session', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        sessionId: id,
-      });
+      const errorWithContext = createErrorWithContext(error, {});
+      this.logger.error('Failed to update PowerShell session', errorWithContext);
       throw error;
     }
   }
@@ -339,10 +319,8 @@ export class PowerShellService extends EventEmitter {
       this.logger.info('PowerShell session closed', { sessionId: id });
       this.emit('sessionClosed', { id });
     } catch (error) {
-      this.logger.error('Failed to close PowerShell session', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        sessionId: id,
-      });
+      const errorWithContext = createErrorWithContext(error, {});
+      this.logger.error('Failed to close PowerShell session', errorWithContext);
       throw error;
     }
   }
@@ -354,10 +332,8 @@ export class PowerShellService extends EventEmitter {
       this.logger.info('PowerShell session deleted', { sessionId: id });
       this.emit('sessionDeleted', { id });
     } catch (error) {
-      this.logger.error('Failed to delete PowerShell session', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        sessionId: id,
-      });
+      const errorWithContext = createErrorWithContext(error, {});
+      this.logger.error('Failed to delete PowerShell session', errorWithContext);
       throw error;
     }
   }

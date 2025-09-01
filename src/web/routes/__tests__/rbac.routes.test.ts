@@ -11,7 +11,7 @@ import { AuthMiddleware } from '../../middleware/auth.middleware';
 import { AuditLogRepository } from '../../../core/repositories/audit-log.repository';
 import { OperatorRepository } from '../../../core/repositories/operator.repository';
 import { OperatorRole } from '../../../types/entities';
-import { DEFAULT_ROLE_DEFINITIONS } from '../../../types/rbac';
+import { DEFAULT_ROLE_DEFINITIONS, ResourceType, Action } from '../../../types/rbac';
 
 // Mock services
 const mockRBACService = {
@@ -45,23 +45,23 @@ describe('RBAC Routes', () => {
     app.use(express.json());
 
     // Mock middleware to always pass
-    mockAuthMiddleware.authenticate!.mockReturnValue((req: any, res: any, next: any) => {
+    mockAuthMiddleware.authenticate!.mockReturnValue(async (req: any, res: any, next: any) => {
       req.operatorId = 'test-operator-id';
       next();
     });
 
     mockAuthMiddleware.requirePermission!.mockReturnValue([
-      (req: any, res: any, next: any) => {
+      async (req: any, res: any, next: any) => {
         req.operatorId = 'test-operator-id';
         next();
       },
     ]);
 
     const router = createRBACRoutes(
-      mockRBACService as RBACService,
-      mockAuthMiddleware as AuthMiddleware,
-      mockAuditLogRepository as AuditLogRepository,
-      mockOperatorRepository as OperatorRepository
+      mockRBACService as unknown as RBACService,
+      mockAuthMiddleware as unknown as AuthMiddleware,
+      mockAuditLogRepository as unknown as AuditLogRepository,
+      mockOperatorRepository as unknown as OperatorRepository
     );
 
     app.use('/api/rbac', router);
@@ -136,7 +136,9 @@ describe('RBAC Routes', () => {
 
   describe('GET /operators/:operatorId/permissions', () => {
     it('should return operator permissions', async () => {
-      const permissions = [{ resource: 'command', actions: ['read', 'execute'] }];
+      const permissions = [
+        { resource: ResourceType.COMMAND, actions: [Action.READ, Action.EXECUTE] },
+      ];
       mockRBACService.getOperatorPermissions!.mockResolvedValue(permissions);
       mockAuditLogRepository.create!.mockResolvedValue({} as any);
 

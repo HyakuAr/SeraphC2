@@ -271,7 +271,7 @@ export const log = {
     };
 
     if (error) {
-      logData.error = {
+      (logData as any).error = {
         name: error.name,
         message: error.message,
         stack: error.stack,
@@ -437,8 +437,8 @@ export class Logger {
   private correlationId?: string;
   private requestId?: string;
 
-  private constructor() {
-    this.winston = logger;
+  constructor(category?: string) {
+    this.winston = category ? logger.child({ category }) : logger;
   }
 
   public static getInstance(): Logger {
@@ -495,6 +495,10 @@ export class Logger {
 
   public debug(message: string, meta?: Record<string, unknown>): void {
     log.debug(message, this.getBaseMeta(meta));
+  }
+
+  public critical(message: string, meta?: Record<string, unknown>): void {
+    log.error(`CRITICAL: ${message}`, undefined, this.getBaseMeta(meta));
   }
 
   public security(event: string, details: Record<string, unknown>): void {
@@ -681,3 +685,7 @@ if (isProduction) {
 }
 
 export default logger;
+
+export function createLogger(category: string) {
+  return new Logger(category);
+}

@@ -6,6 +6,7 @@ import { PowerShellFavorite } from '../../types/entities';
 import { PowerShellFavoriteRepository } from '../services/powershell.service';
 import { DatabaseConnection } from '../database/connection';
 import { Logger } from '../../utils/logger';
+import { createErrorWithContext } from '../../types/errors';
 
 export class PostgresPowerShellFavoriteRepository implements PowerShellFavoriteRepository {
   private dbConnection: DatabaseConnection;
@@ -37,10 +38,8 @@ export class PostgresPowerShellFavoriteRepository implements PowerShellFavoriteR
       const result = await this.dbConnection.query(query, values);
       return this.mapRowToFavorite(result.rows[0]);
     } catch (error) {
-      this.logger.error('Failed to create PowerShell favorite', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        favorite: favorite.name,
-      });
+      const errorWithContext = createErrorWithContext(error, { favorite: favorite.name });
+      this.logger.error('Failed to create PowerShell favorite', errorWithContext);
       throw error;
     }
   }
@@ -52,10 +51,8 @@ export class PostgresPowerShellFavoriteRepository implements PowerShellFavoriteR
       const result = await this.dbConnection.query(query, [id]);
       return result.rows.length > 0 ? this.mapRowToFavorite(result.rows[0]) : null;
     } catch (error) {
-      this.logger.error('Failed to find PowerShell favorite by ID', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        id,
-      });
+      const errorWithContext = createErrorWithContext(error, { id });
+      this.logger.error('Failed to find PowerShell favorite by ID', errorWithContext);
       throw error;
     }
   }
@@ -67,10 +64,8 @@ export class PostgresPowerShellFavoriteRepository implements PowerShellFavoriteR
       const result = await this.dbConnection.query(query, [operatorId]);
       return result.rows.map((row: any) => this.mapRowToFavorite(row));
     } catch (error) {
-      this.logger.error('Failed to find PowerShell favorites by operator', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { operatorId });
+      this.logger.error('Failed to find PowerShell favorites by operator', errorWithContext);
       throw error;
     }
   }
@@ -82,10 +77,8 @@ export class PostgresPowerShellFavoriteRepository implements PowerShellFavoriteR
       const result = await this.dbConnection.query(query, [category]);
       return result.rows.map((row: any) => this.mapRowToFavorite(row));
     } catch (error) {
-      this.logger.error('Failed to find PowerShell favorites by category', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        category,
-      });
+      const errorWithContext = createErrorWithContext(error, { category });
+      this.logger.error('Failed to find PowerShell favorites by category', errorWithContext);
       throw error;
     }
   }
@@ -136,10 +129,8 @@ export class PostgresPowerShellFavoriteRepository implements PowerShellFavoriteR
       }
       return this.mapRowToFavorite(result.rows[0]);
     } catch (error) {
-      this.logger.error('Failed to update PowerShell favorite', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        id,
-      });
+      const errorWithContext = createErrorWithContext(error, { id });
+      this.logger.error('Failed to update PowerShell favorite', errorWithContext);
       throw error;
     }
   }
@@ -153,10 +144,8 @@ export class PostgresPowerShellFavoriteRepository implements PowerShellFavoriteR
         throw new Error(`PowerShell favorite with ID ${id} not found`);
       }
     } catch (error) {
-      this.logger.error('Failed to delete PowerShell favorite', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        id,
-      });
+      const errorWithContext = createErrorWithContext(error, { id });
+      this.logger.error('Failed to delete PowerShell favorite', errorWithContext);
       throw error;
     }
   }
@@ -170,10 +159,8 @@ export class PostgresPowerShellFavoriteRepository implements PowerShellFavoriteR
         throw new Error(`PowerShell favorite with ID ${id} not found`);
       }
     } catch (error) {
-      this.logger.error('Failed to increment PowerShell favorite usage', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        id,
-      });
+      const errorWithContext = createErrorWithContext(error, { id });
+      this.logger.error('Failed to increment PowerShell favorite usage', errorWithContext);
       throw error;
     }
   }
@@ -190,11 +177,8 @@ export class PostgresPowerShellFavoriteRepository implements PowerShellFavoriteR
       const result = await this.dbConnection.query(query, [operatorId, limit]);
       return result.rows.map((row: any) => this.mapRowToFavorite(row));
     } catch (error) {
-      this.logger.error('Failed to get most used PowerShell favorites', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId,
-        limit,
-      });
+      const errorWithContext = createErrorWithContext(error, { operatorId, limit });
+      this.logger.error('Failed to get most used PowerShell favorites', errorWithContext);
       throw error;
     }
   }

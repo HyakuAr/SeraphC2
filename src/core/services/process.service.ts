@@ -5,6 +5,7 @@
 
 import { EventEmitter } from 'events';
 import { CommandManager } from '../engine/command-manager';
+import { createErrorWithContext } from '../../types/errors';
 import {
   ProcessInfo,
   ServiceInfo,
@@ -96,11 +97,8 @@ export class ProcessService extends EventEmitter {
 
       return response;
     } catch (error) {
-      this.logger.error('Failed to get process list', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId });
+      this.logger.error('Failed to get process list', errorWithContext);
       throw error;
     }
   }
@@ -162,13 +160,13 @@ export class ProcessService extends EventEmitter {
 
       return operationResult;
     } catch (error) {
-      this.logger.error('Failed to kill process', {
-        error: error instanceof Error ? error.message : 'Unknown error',
+      const errorWithContext = createErrorWithContext(error, {
         implantId,
         operatorId,
         processId,
         processName,
       });
+      this.logger.error('Failed to kill process', errorWithContext);
       throw error;
     }
   }
@@ -220,12 +218,8 @@ export class ProcessService extends EventEmitter {
 
       return operationResult;
     } catch (error) {
-      this.logger.error('Failed to suspend process', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-        processId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId, processId });
+      this.logger.error('Failed to suspend process', errorWithContext);
       throw error;
     }
   }
@@ -277,12 +271,8 @@ export class ProcessService extends EventEmitter {
 
       return operationResult;
     } catch (error) {
-      this.logger.error('Failed to resume process', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-        processId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId, processId });
+      this.logger.error('Failed to resume process', errorWithContext);
       throw error;
     }
   }
@@ -329,11 +319,8 @@ export class ProcessService extends EventEmitter {
 
       return response;
     } catch (error) {
-      this.logger.error('Failed to get service list', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId });
+      this.logger.error('Failed to get service list', errorWithContext);
       throw error;
     }
   }
@@ -385,12 +372,12 @@ export class ProcessService extends EventEmitter {
 
       return operationResult;
     } catch (error) {
-      this.logger.error('Failed to start service', {
-        error: error instanceof Error ? error.message : 'Unknown error',
+      const errorWithContext = createErrorWithContext(error, {
         implantId,
         operatorId,
         serviceName,
       });
+      this.logger.error('Failed to start service', errorWithContext);
       throw error;
     }
   }
@@ -442,12 +429,12 @@ export class ProcessService extends EventEmitter {
 
       return operationResult;
     } catch (error) {
-      this.logger.error('Failed to stop service', {
-        error: error instanceof Error ? error.message : 'Unknown error',
+      const errorWithContext = createErrorWithContext(error, {
         implantId,
         operatorId,
         serviceName,
       });
+      this.logger.error('Failed to stop service', errorWithContext);
       throw error;
     }
   }
@@ -499,12 +486,12 @@ export class ProcessService extends EventEmitter {
 
       return operationResult;
     } catch (error) {
-      this.logger.error('Failed to restart service', {
-        error: error instanceof Error ? error.message : 'Unknown error',
+      const errorWithContext = createErrorWithContext(error, {
         implantId,
         operatorId,
         serviceName,
       });
+      this.logger.error('Failed to restart service', errorWithContext);
       throw error;
     }
   }
@@ -540,11 +527,8 @@ export class ProcessService extends EventEmitter {
 
       return resources;
     } catch (error) {
-      this.logger.error('Failed to get system resources', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId, operatorId });
+      this.logger.error('Failed to get system resources', errorWithContext);
       throw error;
     }
   }
@@ -614,7 +598,8 @@ export class ProcessService extends EventEmitter {
         status: proc.Status || 'Running',
       }));
     } catch (error) {
-      this.logger.error('Failed to parse process list', { error, output });
+      const errorWithContext = createErrorWithContext(error, { output });
+      this.logger.error('Failed to parse process list', errorWithContext);
       return [];
     }
   }
@@ -642,7 +627,8 @@ export class ProcessService extends EventEmitter {
         canPauseAndContinue: svc.CanPauseAndContinue || false,
       }));
     } catch (error) {
-      this.logger.error('Failed to parse service list', { error, output });
+      const errorWithContext = createErrorWithContext(error, { output });
+      this.logger.error('Failed to parse service list', errorWithContext);
       return [];
     }
   }
@@ -682,7 +668,8 @@ export class ProcessService extends EventEmitter {
         timestamp: new Date(),
       };
     } catch (error) {
-      this.logger.error('Failed to parse system resources', { error, output });
+      const errorWithContext = createErrorWithContext(error, { output });
+      this.logger.error('Failed to parse system resources', errorWithContext);
       throw new Error('Invalid system resources data received from implant');
     }
   }

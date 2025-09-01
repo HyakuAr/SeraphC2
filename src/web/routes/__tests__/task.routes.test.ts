@@ -81,7 +81,7 @@ describe('Task Routes', () => {
     // Create Express app with routes
     app = express();
     app.use(express.json());
-    app.use('/api/tasks', createTaskRoutes(mockTaskScheduler, mockAuthMiddleware));
+    app.use('/api/tasks', createTaskRoutes());
   });
 
   afterEach(() => {

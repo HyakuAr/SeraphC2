@@ -96,7 +96,7 @@ const CommandOutput: React.FC<CommandOutputProps> = ({ command, isExecuting, pro
             {command && (
               <>
                 <Chip
-                  icon={getStatusIcon(command.status)}
+                  icon={getStatusIcon(command.status) || undefined}
                   label={command.status.toUpperCase()}
                   color={getStatusColor(command.status) as any}
                   size="small"
@@ -114,7 +114,7 @@ const CommandOutput: React.FC<CommandOutputProps> = ({ command, isExecuting, pro
 
             {isExecuting && progress && (
               <Chip
-                icon={getStatusIcon(progress.status)}
+                icon={getStatusIcon(progress.status) || undefined}
                 label={progress.status.toUpperCase()}
                 color={getStatusColor(progress.status) as any}
                 size="small"

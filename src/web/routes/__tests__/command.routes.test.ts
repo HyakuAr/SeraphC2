@@ -60,13 +60,7 @@ describe('Command Routes', () => {
     // Create Express app with routes
     app = express();
     app.use(express.json());
-    app.use(
-      '/api/commands',
-      createCommandRoutes({
-        commandManager: mockCommandManager,
-        authMiddleware: mockAuthMiddleware,
-      })
-    );
+    app.use('/api/commands', createCommandRoutes());
   });
 
   afterEach(() => {

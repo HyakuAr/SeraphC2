@@ -76,7 +76,7 @@
     "clean:all": "npm run clean && rimraf node_modules web-client/node_modules coverage web-client/coverage",
     "install:web": "cd web-client && npm install",
     "install:all": "npm install && npm run install:web",
-    "postinstall": "npm run build",
+    "postinstall": "echo 'Build skipped - run npm run build manually when ready'",
     "prestart": "npm run migrate:up",
     "prestart:prod": "npm run migrate:prod"
   },

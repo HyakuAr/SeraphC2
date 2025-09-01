@@ -489,7 +489,6 @@ async function main() {
       case 'validate':
         const isValid = await manager.validateMigrations();
         process.exit(isValid ? 0 : 1);
-        break;
 
       case 'reset':
         console.log('⚠️  This will rollback ALL migrations. Are you sure? (y/N)');

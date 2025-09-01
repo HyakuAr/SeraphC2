@@ -27,6 +27,18 @@ export interface ProtocolConfig {
   retryAttempts?: number;
 }
 
+export interface WebSocketConfig extends ProtocolConfig {
+  maxConnections?: number;
+  pingInterval?: number;
+  pongTimeout?: number;
+}
+
+export interface DNSConfig extends ProtocolConfig {
+  maxQueries?: number;
+  queryTimeout?: number;
+  cacheSize?: number;
+}
+
 export interface ObfuscationConfig {
   enabled: boolean;
   userAgent?: string;
@@ -84,10 +96,12 @@ export abstract class BaseProtocolHandler extends EventEmitter {
   protected config: ProtocolConfig;
   protected stats: ProtocolStats;
   protected isRunning: boolean = false;
+  protected logger: any; // Using any to avoid circular import issues
 
   constructor(protocol: Protocol, config: ProtocolConfig) {
     super();
     this.config = config;
+    // Logger will be initialized by subclasses
     this.stats = {
       protocol,
       connectionsTotal: 0,

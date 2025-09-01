@@ -43,7 +43,7 @@ import {
   Save as SaveIcon,
   Favorite as FavoriteIcon,
   FavoriteBorder as FavoriteBorderIcon,
-  Script as ScriptIcon,
+  Code as ScriptIcon,
   Extension as ModuleIcon,
   Add as AddIcon,
   Edit as EditIcon,
@@ -115,16 +115,19 @@ const PowerShellInterface: React.FC<PowerShellInterfaceProps> = ({ implant }) =>
       });
 
       // Listen for command completion
-      socket.on('commandCompleted', ({ command, result, status }) => {
-        if (currentCommand && command.id === currentCommand.id) {
-          setCurrentCommand({ ...command, result, status });
-          setIsExecuting(false);
-          setCommandProgress(null);
+      socket.on(
+        'commandCompleted',
+        ({ command, result, status }: { command: any; result: any; status: any }) => {
+          if (currentCommand && command.id === currentCommand.id) {
+            setCurrentCommand({ ...command, result, status });
+            setIsExecuting(false);
+            setCommandProgress(null);
+          }
         }
-      });
+      );
 
       // Listen for command failures
-      socket.on('commandFailed', ({ command, error: cmdError }) => {
+      socket.on('commandFailed', ({ command, error: cmdError }: { command: any; error: any }) => {
         if (currentCommand && command.id === currentCommand.id) {
           setError(`Command failed: ${cmdError}`);
           setIsExecuting(false);

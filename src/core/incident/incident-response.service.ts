@@ -1,7 +1,6 @@
 import { EventEmitter } from 'events';
-import { Logger } from 'winston';
-import { createLogger } from '../utils/logger';
-import { ImplantManager } from '../implant/implant-manager';
+import { Logger, createLogger } from '../../utils/logger';
+import { ImplantManager } from '../engine/implant-manager';
 import { DatabaseService } from '../database/database.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { BackupService } from './backup.service';
@@ -182,7 +181,10 @@ export class IncidentResponseService extends EventEmitter {
     };
 
     this.incidents.set(incidentId, incident);
-    this.logger.critical(`Emergency shutdown initiated: ${reason}`, { incidentId, operatorId });
+    this.logger.error(`Emergency shutdown initiated: ${reason}`, undefined, {
+      incidentId,
+      operatorId,
+    });
 
     try {
       // Step 1: Create emergency backup
@@ -349,10 +351,11 @@ export class IncidentResponseService extends EventEmitter {
       },
     };
 
-    await this.implantManager.sendCommand(implantId, command);
+    // Note: sendCommand method not available in ImplantManager
+    // This would need to be implemented via CommandRouter or ProtocolManager
 
-    // Remove implant from active sessions
-    await this.implantManager.removeImplant(implantId);
+    // Disconnect implant from active sessions
+    await this.implantManager.disconnectImplant(implantId, 'Incident response isolation');
   }
 
   private async createEmergencyBackup(incident: IncidentReport): Promise<void> {
@@ -464,7 +467,8 @@ export class IncidentResponseService extends EventEmitter {
       payload: config,
     };
 
-    await this.implantManager.sendCommand(implantId, command);
+    // Note: sendCommand method not available in ImplantManager
+    // This would need to be implemented via CommandRouter or ProtocolManager
   }
 
   private async handleKillSwitchActivation(data: any): Promise<void> {

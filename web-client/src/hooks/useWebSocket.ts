@@ -117,6 +117,7 @@ export const useWebSocket = () => {
   }, [isAuthenticated, token, connect, disconnect]);
 
   return {
+    socket: webSocketService.getSocket(),
     isConnected: webSocketService.isConnected(),
     connect,
     disconnect,

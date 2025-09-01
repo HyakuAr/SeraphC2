@@ -74,19 +74,22 @@ const CommandInterface: React.FC<CommandInterfaceProps> = ({ implant }) => {
       });
 
       // Listen for command completion
-      socket.on('commandCompleted', ({ command, result, status }) => {
-        if (currentCommand && command.id === currentCommand.id) {
-          setCurrentCommand({ ...command, result, status });
-          setIsExecuting(false);
-          setCommandProgress(null);
+      socket.on(
+        'commandCompleted',
+        ({ command, result, status }: { command: any; result: any; status: any }) => {
+          if (currentCommand && command.id === currentCommand.id) {
+            setCurrentCommand({ ...command, result, status });
+            setIsExecuting(false);
+            setCommandProgress(null);
 
-          // Add to history
-          setCommandHistory(prev => [{ ...command, result, status }, ...prev]);
+            // Add to history
+            setCommandHistory(prev => [{ ...command, result, status }, ...prev]);
+          }
         }
-      });
+      );
 
       // Listen for command failures
-      socket.on('commandFailed', ({ command, error: cmdError }) => {
+      socket.on('commandFailed', ({ command, error: cmdError }: { command: any; error: any }) => {
         if (currentCommand && command.id === currentCommand.id) {
           setError(`Command failed: ${cmdError}`);
           setIsExecuting(false);
@@ -95,7 +98,7 @@ const CommandInterface: React.FC<CommandInterfaceProps> = ({ implant }) => {
       });
 
       // Listen for command timeouts
-      socket.on('commandTimeout', ({ command, timeout }) => {
+      socket.on('commandTimeout', ({ command, timeout }: { command: any; timeout: any }) => {
         if (currentCommand && command.id === currentCommand.id) {
           setError(`Command timed out after ${timeout}ms`);
           setIsExecuting(false);
@@ -104,7 +107,7 @@ const CommandInterface: React.FC<CommandInterfaceProps> = ({ implant }) => {
       });
 
       // Listen for command cancellations
-      socket.on('commandCancelled', ({ command }) => {
+      socket.on('commandCancelled', ({ command }: { command: any }) => {
         if (currentCommand && command.id === currentCommand.id) {
           setIsExecuting(false);
           setCommandProgress(null);

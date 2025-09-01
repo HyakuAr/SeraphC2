@@ -60,8 +60,8 @@ describe('AuthMiddleware', () => {
 
   beforeEach(() => {
     authMiddleware = new AuthMiddleware(
-      mockAuthService as AuthService,
-      mockRBACService as RBACService
+      mockAuthService as unknown as AuthService,
+      mockRBACService as unknown as RBACService
     );
     req = mockRequest();
     res = mockResponse();
@@ -160,7 +160,7 @@ describe('AuthMiddleware', () => {
     beforeEach(() => {
       req.operator = mockOperator;
       req.operatorId = mockOperator.id;
-      req.ip = '127.0.0.1';
+      Object.defineProperty(req, 'ip', { value: '127.0.0.1', writable: true });
       (req.get as jest.Mock).mockReturnValue('test-user-agent');
     });
 

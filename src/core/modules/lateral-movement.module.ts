@@ -12,6 +12,7 @@ import {
 } from '../../types/modules';
 import { Logger } from '../../utils/logger';
 
+import { createErrorWithContext } from '../../types/errors';
 export interface LateralMovementResult {
   type:
     | 'network_enum'
@@ -433,9 +434,8 @@ export class LateralMovementModule {
 
       return result;
     } catch (error) {
-      this.logger.error('Network enumeration failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Network enumeration failed', errorWithContext);
       throw error;
     }
   }
@@ -509,9 +509,8 @@ export class LateralMovementModule {
 
       return result;
     } catch (error) {
-      this.logger.error('Credential attacks failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Credential attacks failed', errorWithContext);
       throw error;
     }
   }
@@ -574,9 +573,8 @@ export class LateralMovementModule {
 
       return result;
     } catch (error) {
-      this.logger.error('Remote execution failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Remote execution failed', errorWithContext);
       throw error;
     }
   }
@@ -640,9 +638,8 @@ export class LateralMovementModule {
 
       return result;
     } catch (error) {
-      this.logger.error('Privilege escalation detection failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Privilege escalation detection failed', errorWithContext);
       throw error;
     }
   }
@@ -719,9 +716,8 @@ export class LateralMovementModule {
 
       return result;
     } catch (error) {
-      this.logger.error('Active Directory enumeration failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Active Directory enumeration failed', errorWithContext);
       throw error;
     }
   }

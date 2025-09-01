@@ -329,7 +329,7 @@ const ImplantDetails: React.FC<ImplantDetailsProps> = ({ implant, loading = fals
                     Network Interfaces
                   </Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                    {implant.systemInfo.networkInterfaces.map((iface, index) => (
+                    {implant.systemInfo.networkInterfaces.map((iface: string, index: number) => (
                       <Chip key={index} label={iface} variant="outlined" size="small" />
                     ))}
                   </Box>
@@ -346,31 +346,25 @@ const ImplantDetails: React.FC<ImplantDetailsProps> = ({ implant, loading = fals
                   <Typography variant="body2" color="text.secondary">
                     Callback Interval
                   </Typography>
-                  <Typography variant="body1">
-                    {implant.configuration?.callbackInterval || 'N/A'}ms
-                  </Typography>
+                  <Typography variant="body1">N/A</Typography>
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <Typography variant="body2" color="text.secondary">
                     Jitter
                   </Typography>
-                  <Typography variant="body1">{implant.configuration?.jitter || 'N/A'}%</Typography>
+                  <Typography variant="body1">N/A</Typography>
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <Typography variant="body2" color="text.secondary">
                     Max Retries
                   </Typography>
-                  <Typography variant="body1">
-                    {implant.configuration?.maxRetries || 'N/A'}
-                  </Typography>
+                  <Typography variant="body1">N/A</Typography>
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <Typography variant="body2" color="text.secondary">
                     Uptime
                   </Typography>
-                  <Typography variant="body1">
-                    {formatUptime(implant.createdAt || implant.lastSeen)}
-                  </Typography>
+                  <Typography variant="body1">{formatUptime(implant.lastSeen)}</Typography>
                 </Grid>
               </Grid>
             </Grid>

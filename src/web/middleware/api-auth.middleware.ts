@@ -114,16 +114,17 @@ export class ApiAuthMiddleware {
 
     const token = authHeader.substring(7);
     try {
-      const decoded = this.authService.verifyToken(token);
+      const validation = await this.authService.validateToken(token);
+      const decoded = validation.valid ? validation.operator : null;
       if (!decoded) {
         return null;
       }
 
       // Get user permissions from database or token
-      const permissions = await this.getUserPermissions(decoded.userId);
+      const permissions = await this.getUserPermissions(decoded.id);
 
       return {
-        id: decoded.userId,
+        id: decoded.id,
         username: decoded.username,
         role: decoded.role,
         permissions,
@@ -184,17 +185,17 @@ export class ApiAuthMiddleware {
         return null;
       }
 
-      const loginResult = await this.authService.login(username, password);
-      if (!loginResult.success || !loginResult.user) {
+      const loginResult = await this.authService.login({ username, password });
+      if (!loginResult.success || !loginResult.operator) {
         return null;
       }
 
-      const permissions = await this.getUserPermissions(loginResult.user.id);
+      const permissions = await this.getUserPermissions(loginResult.operator.id);
 
       return {
-        id: loginResult.user.id,
-        username: loginResult.user.username,
-        role: loginResult.user.role,
+        id: loginResult.operator.id,
+        username: loginResult.operator.username,
+        role: loginResult.operator.role,
         permissions,
         authMethod: 'basic' as const,
       };

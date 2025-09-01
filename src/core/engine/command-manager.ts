@@ -112,10 +112,10 @@ export class CommandManager extends EventEmitter {
 
       return command;
     } catch (error) {
-      this.logger.error('Failed to execute command', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        request,
-      });
+      this.logger.error(
+        'Command manager operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -153,11 +153,10 @@ export class CommandManager extends EventEmitter {
         implantId: command.implantId,
       });
     } catch (error) {
-      this.logger.error('Failed to cancel command', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        commandId,
-        operatorId,
-      });
+      this.logger.error(
+        'Command manager operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }
@@ -200,10 +199,10 @@ export class CommandManager extends EventEmitter {
       const offset = filter.offset || 0;
       return allCommands.slice(offset, offset + limit);
     } catch (error) {
-      this.logger.error('Failed to get command history', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        filter,
-      });
+      this.logger.error(
+        'Command manager operation failed',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw error;
     }
   }

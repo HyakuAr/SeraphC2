@@ -12,6 +12,7 @@ import {
 } from '../../types/modules';
 import { Logger } from '../../utils/logger';
 
+import { createErrorWithContext } from '../../types/errors';
 export class CredentialDumpingModule {
   private logger: Logger;
 
@@ -298,10 +299,13 @@ export class CredentialDumpingModule {
 
       return result;
     } catch (error) {
-      this.logger.error('LSASS credential dump failed', {
-        method,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.logger.error(
+        'LSASS credential dump failed',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          method,
+        }
+      );
       throw error;
     }
   }
@@ -390,9 +394,8 @@ export class CredentialDumpingModule {
 
       return result;
     } catch (error) {
-      this.logger.error('SAM database dump failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('SAM database dump failed', errorWithContext);
       throw error;
     }
   }
@@ -445,9 +448,8 @@ export class CredentialDumpingModule {
 
       return result;
     } catch (error) {
-      this.logger.error('Browser password dump failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Browser password dump failed', errorWithContext);
       throw error;
     }
   }
@@ -587,9 +589,8 @@ export class CredentialDumpingModule {
 
       return result;
     } catch (error) {
-      this.logger.error('Registry credential dump failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Registry credential dump failed', errorWithContext);
       throw error;
     }
   }
@@ -641,9 +642,8 @@ export class CredentialDumpingModule {
 
       return result;
     } catch (error) {
-      this.logger.error('Memory credential dump failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Memory credential dump failed', errorWithContext);
       throw error;
     }
   }

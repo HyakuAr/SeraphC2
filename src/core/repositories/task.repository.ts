@@ -5,6 +5,7 @@
 
 import { Pool } from 'pg';
 import { randomUUID } from 'crypto';
+import { createErrorWithContext } from '../../types/errors';
 import {
   Task,
   TaskExecution,
@@ -66,11 +67,8 @@ export class TaskRepository {
       this.logger.info('Task created', { taskId: id, taskName: data.name, createdBy });
       return task;
     } catch (error) {
-      this.logger.error('Failed to create task', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        data,
-        createdBy,
-      });
+      const errorWithContext = createErrorWithContext(error, { data, createdBy });
+      this.logger.error('Failed to create task', errorWithContext);
       throw error;
     } finally {
       client.release();
@@ -92,10 +90,8 @@ export class TaskRepository {
 
       return this.mapRowToTask(result.rows[0]);
     } catch (error) {
-      this.logger.error('Failed to get task by ID', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        taskId: id,
-      });
+      const errorWithContext = createErrorWithContext(error, {});
+      this.logger.error('Failed to get task by ID', errorWithContext);
       throw error;
     } finally {
       client.release();
@@ -205,12 +201,8 @@ export class TaskRepository {
         totalPages: Math.ceil(totalCount / pageSize),
       };
     } catch (error) {
-      this.logger.error('Failed to get tasks', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        filter,
-        page,
-        pageSize,
-      });
+      const errorWithContext = createErrorWithContext(error, { filter, page, pageSize });
+      this.logger.error('Failed to get tasks', errorWithContext);
       throw error;
     } finally {
       client.release();
@@ -300,11 +292,8 @@ export class TaskRepository {
       this.logger.info('Task updated', { taskId: id, updates: Object.keys(data) });
       return task;
     } catch (error) {
-      this.logger.error('Failed to update task', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        taskId: id,
-        data,
-      });
+      const errorWithContext = createErrorWithContext(error, { data });
+      this.logger.error('Failed to update task', errorWithContext);
       throw error;
     } finally {
       client.release();
@@ -327,10 +316,8 @@ export class TaskRepository {
 
       return deleted;
     } catch (error) {
-      this.logger.error('Failed to delete task', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        taskId: id,
-      });
+      const errorWithContext = createErrorWithContext(error, {});
+      this.logger.error('Failed to delete task', errorWithContext);
       throw error;
     } finally {
       client.release();
@@ -346,11 +333,8 @@ export class TaskRepository {
       const query = 'UPDATE tasks SET next_execution = $1 WHERE id = $2';
       await client.query(query, [nextExecution, id]);
     } catch (error) {
-      this.logger.error('Failed to update task next execution', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        taskId: id,
-        nextExecution,
-      });
+      const errorWithContext = createErrorWithContext(error, { nextExecution });
+      this.logger.error('Failed to update task next execution', errorWithContext);
       throw error;
     } finally {
       client.release();
@@ -371,9 +355,8 @@ export class TaskRepository {
       const result = await client.query(query);
       return result.rows.map(row => this.mapRowToTask(row));
     } catch (error) {
-      this.logger.error('Failed to get tasks ready for execution', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      const errorWithContext = createErrorWithContext(error, {});
+      this.logger.error('Failed to get tasks ready for execution', errorWithContext);
       throw error;
     } finally {
       client.release();
@@ -403,11 +386,8 @@ export class TaskRepository {
 
       return this.mapRowToTaskExecution(result.rows[0]);
     } catch (error) {
-      this.logger.error('Failed to create task execution', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        taskId,
-        triggeredBy,
-      });
+      const errorWithContext = createErrorWithContext(error, { taskId, triggeredBy });
+      this.logger.error('Failed to create task execution', errorWithContext);
       throw error;
     } finally {
       client.release();
@@ -484,11 +464,8 @@ export class TaskRepository {
 
       return this.mapRowToTaskExecution(result.rows[0]);
     } catch (error) {
-      this.logger.error('Failed to update task execution', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        executionId: id,
-        updates,
-      });
+      const errorWithContext = createErrorWithContext(error, { updates });
+      this.logger.error('Failed to update task execution', errorWithContext);
       throw error;
     } finally {
       client.release();
@@ -524,10 +501,8 @@ export class TaskRepository {
 
       return execution;
     } catch (error) {
-      this.logger.error('Failed to get task execution by ID', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        executionId: id,
-      });
+      const errorWithContext = createErrorWithContext(error, {});
+      this.logger.error('Failed to get task execution by ID', errorWithContext);
       throw error;
     } finally {
       client.release();
@@ -573,12 +548,8 @@ export class TaskRepository {
         totalPages: Math.ceil(totalCount / pageSize),
       };
     } catch (error) {
-      this.logger.error('Failed to get task executions', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        taskId,
-        page,
-        pageSize,
-      });
+      const errorWithContext = createErrorWithContext(error, { taskId, page, pageSize });
+      this.logger.error('Failed to get task executions', errorWithContext);
       throw error;
     } finally {
       client.release();
@@ -604,12 +575,8 @@ export class TaskRepository {
       const values = [executionId, level, message, JSON.stringify(data || {})];
       await client.query(query, values);
     } catch (error) {
-      this.logger.error('Failed to add execution log', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        executionId,
-        level,
-        message,
-      });
+      const errorWithContext = createErrorWithContext(error, { executionId, level, message });
+      this.logger.error('Failed to add execution log', errorWithContext);
       throw error;
     } finally {
       client.release();
@@ -626,10 +593,8 @@ export class TaskRepository {
       const result = await client.query(query, [retentionDays]);
       return result.rows[0].cleanup_old_task_executions;
     } catch (error) {
-      this.logger.error('Failed to cleanup old executions', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        retentionDays,
-      });
+      const errorWithContext = createErrorWithContext(error, { retentionDays });
+      this.logger.error('Failed to cleanup old executions', errorWithContext);
       throw error;
     } finally {
       client.release();

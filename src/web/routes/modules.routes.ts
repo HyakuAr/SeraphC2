@@ -5,6 +5,7 @@
 
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
+const { body, param, query, validationResult } = require('express-validator');
 import { ModuleManagerService } from '../../core/services/module-manager.service';
 import { AuthMiddleware } from '../../core/auth/auth.middleware';
 import { rbacMiddleware } from '../../core/auth/rbac.middleware';
@@ -18,6 +19,11 @@ import { Logger } from '../../utils/logger';
 
 const router = Router();
 const logger = Logger.getInstance();
+
+// Validation middleware
+const validateImplantId = param('implantId').isUUID().withMessage('Invalid implant ID');
+const validateModuleId = param('moduleId').isUUID().withMessage('Invalid module ID');
+const validateExecutionId = param('executionId').isUUID().withMessage('Invalid execution ID');
 
 // Configure multer for module uploads
 const upload = multer({
@@ -85,7 +91,7 @@ router.get(
       const modules = moduleManager.listModules(filter);
 
       logger.info('Modules listed', {
-        operatorId: (req as any).user.id,
+        // $prop: (req as any).user.id
         count: modules.length,
         filter,
       });
@@ -95,10 +101,10 @@ router.get(
         count: modules.length,
       });
     } catch (error) {
-      logger.error('Failed to list modules', {
-        operatorId: (req as any).user?.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error(
+        'Failed to list modules',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       return res.status(500).json({ error: 'Failed to list modules' });
     }
   }
@@ -119,10 +125,10 @@ router.get(
 
       return res.json({ categories });
     } catch (error) {
-      logger.error('Failed to get module categories', {
-        operatorId: (req as any).user?.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error(
+        'Failed to get module categories',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       return res.status(500).json({ error: 'Failed to get module categories' });
     }
   }
@@ -147,7 +153,7 @@ router.get(
       const modules = moduleManager.searchModules(query);
 
       logger.info('Modules searched', {
-        operatorId: (req as any).user.id,
+        // $prop: (req as any).user.id
         query,
         results: modules.length,
       });
@@ -158,10 +164,10 @@ router.get(
         query,
       });
     } catch (error) {
-      logger.error('Failed to search modules', {
-        operatorId: (req as any).user?.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error(
+        'Failed to search modules',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       return res.status(500).json({ error: 'Failed to search modules' });
     }
   }
@@ -194,11 +200,10 @@ router.get(
 
       return res.json({ module: moduleData });
     } catch (error) {
-      logger.error('Failed to get module', {
-        operatorId: (req as any).user?.id,
-        moduleId: req.params['moduleId'],
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error(
+        'Failed to get module',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       return res.status(500).json({ error: 'Failed to get module' });
     }
   }
@@ -225,7 +230,7 @@ router.post(
       const loadRequest = {
         moduleId,
         implantId,
-        operatorId: (req as any).user.id,
+        operatorId: (req as any).user?.id || 'unknown',
         verifySignature,
         sandboxed,
         resourceLimits,
@@ -234,7 +239,7 @@ router.post(
       const module = await moduleManager.loadModule(loadRequest);
 
       logger.info('Module loaded', {
-        operatorId: (req as any).user.id,
+        // $prop: (req as any).user.id
         moduleId,
         implantId,
         moduleName: module.metadata.name,
@@ -249,12 +254,10 @@ router.post(
         message: 'Module loaded successfully',
       });
     } catch (error) {
-      logger.error('Failed to load module', {
-        operatorId: (req as any).user?.id,
-        moduleId: req.params['moduleId'],
-        implantId: req.body.implantId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error(
+        'Failed to load module',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       return res
         .status(500)
         .json({ error: error instanceof Error ? error.message : 'Failed to load module' });
@@ -283,7 +286,7 @@ router.post(
       const executeRequest = {
         moduleId,
         implantId,
-        operatorId: (req as any).user.id,
+        operatorId: (req as any).user?.id || 'unknown',
         capability,
         parameters,
         timeout,
@@ -293,11 +296,11 @@ router.post(
       const execution = await moduleManager.executeModule(executeRequest);
 
       logger.info('Module executed', {
-        operatorId: (req as any).user.id,
+        // $prop: (req as any).user.id
         moduleId,
         implantId,
         capability,
-        executionId: execution.id,
+        // $prop: execution.id
         success: execution.result?.success,
       });
 
@@ -307,13 +310,10 @@ router.post(
         message: 'Module executed successfully',
       });
     } catch (error) {
-      logger.error('Failed to execute module', {
-        operatorId: (req as any).user?.id,
-        moduleId: req.params['moduleId'],
-        implantId: req.body.implantId,
-        capability: req.body.capability,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error(
+        'Failed to execute module',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       return res
         .status(500)
         .json({ error: error instanceof Error ? error.message : 'Failed to execute module' });
@@ -342,7 +342,7 @@ router.post(
       const unloadRequest = {
         moduleId,
         implantId,
-        operatorId: (req as any).user.id,
+        operatorId: (req as any).user?.id || 'unknown',
         force,
       };
 
@@ -353,7 +353,7 @@ router.post(
       }
 
       logger.info('Module unloaded', {
-        operatorId: (req as any).user.id,
+        // $prop: (req as any).user.id
         moduleId,
         implantId,
         force,
@@ -364,12 +364,10 @@ router.post(
         message: 'Module unloaded successfully',
       });
     } catch (error) {
-      logger.error('Failed to unload module', {
-        operatorId: (req as any).user?.id,
-        moduleId: req.params['moduleId'],
-        implantId: req.body.implantId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error(
+        'Failed to unload module',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       return res
         .status(500)
         .json({ error: error instanceof Error ? error.message : 'Failed to unload module' });
@@ -410,11 +408,10 @@ router.get(
         implantId,
       });
     } catch (error) {
-      logger.error('Failed to get loaded modules', {
-        operatorId: (req as any).user?.id,
-        implantId: req.params['implantId'],
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error(
+        'Failed to get loaded modules',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       return res.status(500).json({ error: 'Failed to get loaded modules' });
     }
   }
@@ -462,10 +459,10 @@ router.get(
         count: executions.length,
       });
     } catch (error) {
-      logger.error('Failed to get module executions', {
-        operatorId: (req as any).user?.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error(
+        'Failed to get module executions',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       return res.status(500).json({ error: 'Failed to get module executions' });
     }
   }
@@ -500,7 +497,7 @@ router.post(
       }
 
       logger.info('Module execution stopped', {
-        operatorId: (req as any).user.id,
+        // $prop: (req as any).user.id
         executionId,
       });
 
@@ -509,11 +506,10 @@ router.post(
         message: 'Execution stopped successfully',
       });
     } catch (error) {
-      logger.error('Failed to stop module execution', {
-        operatorId: (req as any).user?.id,
-        executionId: req.params['executionId'],
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error(
+        'Failed to stop module execution',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       return res.status(500).json({ error: 'Failed to stop execution' });
     }
   }
@@ -547,8 +543,8 @@ router.post(
       const module = await moduleManager.installModule(req.file.buffer, metadata, signature);
 
       logger.info('Module installed', {
-        operatorId: (req as any).user.id,
-        moduleId: module.id,
+        // $prop: (req as any).user.id
+        // $prop: module.id
         moduleName: module.metadata.name,
         size: req.file.size,
       });
@@ -562,10 +558,10 @@ router.post(
         message: 'Module installed successfully',
       });
     } catch (error) {
-      logger.error('Failed to install module', {
-        operatorId: (req as any).user?.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error(
+        'Failed to install module',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       return res
         .status(500)
         .json({ error: error instanceof Error ? error.message : 'Failed to install module' });
@@ -602,7 +598,7 @@ router.delete(
       }
 
       logger.info('Module uninstalled', {
-        operatorId: (req as any).user.id,
+        // $prop: (req as any).user.id
         moduleId,
       });
 
@@ -611,11 +607,10 @@ router.delete(
         message: 'Module uninstalled successfully',
       });
     } catch (error) {
-      logger.error('Failed to uninstall module', {
-        operatorId: (req as any).user?.id,
-        moduleId: req.params['moduleId'],
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error(
+        'Failed to uninstall module',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       return res
         .status(500)
         .json({ error: error instanceof Error ? error.message : 'Failed to uninstall module' });

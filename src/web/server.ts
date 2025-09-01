@@ -9,7 +9,9 @@ import helmet from 'helmet';
 import path from 'path';
 import { createServer, Server as HTTPServer } from 'http';
 import { AuthService } from '../core/auth/auth.service';
-import { AuthMiddleware } from '../core/auth/auth.middleware';
+import { AuthMiddleware as CoreAuthMiddleware } from '../core/auth/auth.middleware';
+import { AuthMiddleware } from './middleware/auth.middleware';
+import { RBACService } from '../core/services/rbac.service';
 import { MfaService } from '../core/auth/mfa.service';
 import { PostgresBackupCodesRepository } from '../core/repositories/backup-codes.repository';
 import { OperatorRepository } from '../core/repositories/interfaces';
@@ -66,7 +68,9 @@ export class SeraphC2Server {
   private app: Application;
   private httpServer: HTTPServer;
   private authService: AuthService;
-  private authMiddleware: AuthMiddleware;
+  private authMiddleware: CoreAuthMiddleware;
+  private webAuthMiddleware: AuthMiddleware;
+  private rbacService: RBACService;
   private mfaService: MfaService;
   private implantManager: ImplantManager;
   private commandManager: CommandManager;
@@ -102,7 +106,9 @@ export class SeraphC2Server {
 
     // Initialize auth service with MFA support
     this.authService = new AuthService(this.operatorRepository, this.mfaService);
-    this.authMiddleware = new AuthMiddleware(this.authService);
+    this.authMiddleware = new CoreAuthMiddleware(this.authService);
+    this.rbacService = new RBACService(this.operatorRepository);
+    this.webAuthMiddleware = new AuthMiddleware(this.authService, this.rbacService);
     this.implantManager = new ImplantManager();
     this.commandManager = new CommandManager(
       // We'll need to create a command router - for now using placeholder
@@ -168,11 +174,7 @@ export class SeraphC2Server {
 
     // Initialize incident response services
     this.databaseService = new DatabaseService(getPool());
-    this.cryptoService = new CryptoService({
-      algorithm: 'aes-256-gcm',
-      keyDerivation: 'pbkdf2',
-      iterations: 100000,
-    });
+    this.cryptoService = new CryptoService();
 
     const backupConfig = {
       backupDirectory: path.join(process.cwd(), 'backups'),
@@ -298,13 +300,7 @@ export class SeraphC2Server {
     );
 
     // Command execution routes
-    this.app.use(
-      '/api/commands',
-      createCommandRoutes({
-        commandManager: this.commandManager,
-        authMiddleware: this.authMiddleware,
-      })
-    );
+    this.app.use('/api/commands', createCommandRoutes());
 
     // File operations routes
     this.app.use(
@@ -322,7 +318,7 @@ export class SeraphC2Server {
     this.app.use('/api/remote-desktop', createRemoteDesktopRoutes(this.commandManager));
 
     // Task scheduler routes
-    this.app.use('/api/tasks', createTaskRoutes(this.taskSchedulerService, this.authMiddleware));
+    this.app.use('/api/tasks', createTaskRoutes());
 
     // Module management routes
     this.app.locals.moduleManager = this.moduleManagerService;
@@ -338,7 +334,7 @@ export class SeraphC2Server {
     );
 
     // Audit routes
-    this.app.use('/api/audit', createAuditRoutes(this.authMiddleware, this.auditLogRepository));
+    this.app.use('/api/audit', createAuditRoutes(this.webAuthMiddleware, this.auditLogRepository));
 
     // Incident response routes
     this.app.use(
@@ -411,6 +407,7 @@ export class SeraphC2Server {
         corsOrigins: this.config.corsOrigins,
       },
       this.implantManager,
+      this.commandManager,
       this.authService
     );
   }
@@ -474,7 +471,7 @@ export class SeraphC2Server {
         });
 
         // Graceful shutdown
-        const shutdown = () => {
+        const shutdown = async () => {
           console.log('🛑 Shutting down gracefully...');
 
           // Close WebSocket service
@@ -551,8 +548,12 @@ export class SeraphC2Server {
   /**
    * Get authentication middleware instance
    */
-  getAuthMiddleware(): AuthMiddleware {
+  getAuthMiddleware(): CoreAuthMiddleware {
     return this.authMiddleware;
+  }
+
+  getWebAuthMiddleware(): AuthMiddleware {
+    return this.webAuthMiddleware;
   }
 
   /**

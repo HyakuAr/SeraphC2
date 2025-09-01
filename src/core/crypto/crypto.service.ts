@@ -13,6 +13,12 @@ import { KeyManager } from './key-manager';
 import { createHash } from 'crypto';
 
 export class CryptoService {
+  /**
+   * Generate a secure random token
+   */
+  static generateToken(length: number = 32): string {
+    return generateSecureRandom(length).toString('hex');
+  }
   private keyManager: KeyManager;
 
   constructor() {
@@ -61,9 +67,34 @@ export class CryptoService {
   }
 
   /**
+   * Encrypt buffer data (for backup service)
+   */
+  encryptBuffer(data: Buffer): Buffer {
+    const key = generateSecureRandom(32);
+    const result = this.encryptSync(data, key);
+
+    // Prepend key to encrypted data (in real implementation, key should be stored separately)
+    const combined = Buffer.concat([key, Buffer.from(JSON.stringify(result))]);
+
+    return combined;
+  }
+
+  /**
+   * Decrypt buffer data (for backup service)
+   */
+  decryptBuffer(encryptedData: Buffer): Buffer {
+    // Extract key and encrypted data
+    const key = encryptedData.slice(0, 32);
+    const encryptedJson = encryptedData.slice(32).toString();
+    const encryptionResult = JSON.parse(encryptedJson);
+
+    return this.decryptSync(encryptionResult, key);
+  }
+
+  /**
    * Generate hash of data
    */
-  hash(data: string, algorithm: string = 'sha256'): string {
+  hash(data: string | Buffer, algorithm: string = 'sha256'): string {
     return createHash(algorithm).update(data).digest('hex');
   }
 
@@ -142,37 +173,5 @@ export class CryptoService {
    */
   async importKeys(keyData: any): Promise<void> {
     this.keyManager.importKeys(keyData);
-  }
-
-  /**
-   * Encrypt buffer data (for backup service)
-   */
-  async encrypt(data: Buffer): Promise<Buffer> {
-    const key = generateSecureRandom(32);
-    const result = this.encryptSync(data, key);
-
-    // Prepend key to encrypted data (in real implementation, key should be stored separately)
-    const combined = Buffer.concat([key, Buffer.from(JSON.stringify(result))]);
-
-    return combined;
-  }
-
-  /**
-   * Decrypt buffer data (for backup service)
-   */
-  async decrypt(encryptedData: Buffer): Promise<Buffer> {
-    // Extract key and encrypted data
-    const key = encryptedData.slice(0, 32);
-    const encryptedJson = encryptedData.slice(32).toString();
-    const encryptionResult = JSON.parse(encryptedJson);
-
-    return this.decryptSync(encryptionResult, key);
-  }
-
-  /**
-   * Hash buffer data
-   */
-  hash(data: Buffer): string {
-    return createHash('sha256').update(data).digest('hex');
   }
 }

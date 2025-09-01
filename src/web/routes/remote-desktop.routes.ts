@@ -88,11 +88,11 @@ export function createRemoteDesktopRoutes(commandManager: CommandManager): Route
           data: result,
         });
       } catch (error) {
-        logger.error('Failed to initialize remote desktop session', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: req.params['implantId'],
-          operatorId: req.user?.id,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
@@ -137,11 +137,11 @@ export function createRemoteDesktopRoutes(commandManager: CommandManager): Route
           data: result,
         });
       } catch (error) {
-        logger.error('Failed to terminate remote desktop session', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: req.params['implantId'],
-          operatorId: req.user?.id,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
@@ -188,11 +188,11 @@ export function createRemoteDesktopRoutes(commandManager: CommandManager): Route
           data: result,
         });
       } catch (error) {
-        logger.error('Failed to send mouse click', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: req.params['implantId'],
-          operatorId: req.user?.id,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
@@ -239,11 +239,11 @@ export function createRemoteDesktopRoutes(commandManager: CommandManager): Route
           data: result,
         });
       } catch (error) {
-        logger.error('Failed to send mouse move', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: req.params['implantId'],
-          operatorId: req.user?.id,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
@@ -294,11 +294,11 @@ export function createRemoteDesktopRoutes(commandManager: CommandManager): Route
           data: result,
         });
       } catch (error) {
-        logger.error('Failed to send keyboard input', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: req.params['implantId'],
-          operatorId: req.user?.id,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
@@ -343,11 +343,11 @@ export function createRemoteDesktopRoutes(commandManager: CommandManager): Route
           data: result,
         });
       } catch (error) {
-        logger.error('Failed to disable local input', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: req.params['implantId'],
-          operatorId: req.user?.id,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
@@ -392,11 +392,11 @@ export function createRemoteDesktopRoutes(commandManager: CommandManager): Route
           data: result,
         });
       } catch (error) {
-        logger.error('Failed to enable local input', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: req.params['implantId'],
-          operatorId: req.user?.id,
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
@@ -433,10 +433,11 @@ export function createRemoteDesktopRoutes(commandManager: CommandManager): Route
           data: status,
         });
       } catch (error) {
-        logger.error('Failed to get remote desktop status', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          implantId: req.params['implantId'],
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,
@@ -471,9 +472,11 @@ export function createRemoteDesktopRoutes(commandManager: CommandManager): Route
           },
         });
       } catch (error) {
-        logger.error('Failed to get active remote desktop sessions', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
+        logger.error(
+          'Error occurred',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {}
+        );
 
         return res.status(500).json({
           success: false,

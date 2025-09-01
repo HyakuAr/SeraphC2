@@ -9,6 +9,7 @@ import { TaskRepository } from '../repositories/task.repository';
 import { CommandManager } from '../engine/command-manager';
 import { CronParser } from '../../utils/cron-parser';
 import { Logger } from '../../utils/logger';
+import { createErrorWithContext } from '../../types/errors';
 import {
   Task,
   TaskExecution,
@@ -444,9 +445,10 @@ export class TaskSchedulerService extends EventEmitter {
         }
       }
     } catch (error) {
-      this.logger.error('Error processing scheduled tasks', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      this.logger.error(
+        'Error processing scheduled tasks',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
     }
   }
 
@@ -485,9 +487,10 @@ export class TaskSchedulerService extends EventEmitter {
         }
       }
     } catch (error) {
-      this.logger.error('Error processing conditional triggers', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      this.logger.error(
+        'Error processing conditional triggers',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
     }
   }
 
@@ -526,11 +529,14 @@ export class TaskSchedulerService extends EventEmitter {
 
     // Execute in background
     this.executeTaskCommands(task, execution).catch(error => {
-      this.logger.error('Task execution failed', {
-        taskId: task.id,
-        executionId: execution.id,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      this.logger.error(
+        'Task execution failed',
+        error instanceof Error ? error : new Error('Unknown error'),
+        {
+          taskId: task.id,
+          executionId: execution.id,
+        }
+      );
     });
 
     return execution;
@@ -661,10 +667,9 @@ export class TaskSchedulerService extends EventEmitter {
         },
       });
 
-      this.logger.error('Task execution failed', {
+      this.logger.error('Task execution failed', new Error(errorMessage), {
         taskId: task.id,
         executionId: execution.id,
-        error: errorMessage,
       });
     }
   }
@@ -728,11 +733,14 @@ export class TaskSchedulerService extends EventEmitter {
             nextExecution = triggerNext;
           }
         } catch (error) {
-          this.logger.error('Invalid cron expression', {
-            taskId: task.id,
-            expression: trigger.cronSchedule.expression,
-            error: error instanceof Error ? error.message : 'Unknown error',
-          });
+          this.logger.error(
+            'Invalid cron expression',
+            error instanceof Error ? error : new Error('Unknown error'),
+            {
+              taskId: task.id,
+              expression: trigger.cronSchedule.expression,
+            }
+          );
         }
       }
     }
@@ -753,9 +761,10 @@ export class TaskSchedulerService extends EventEmitter {
         this.logger.info('Cleaned up old task executions', { deletedCount });
       }
     } catch (error) {
-      this.logger.error('Failed to cleanup old executions', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      this.logger.error(
+        'Failed to cleanup old executions',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
     }
   }
 
@@ -890,13 +899,16 @@ export class TaskSchedulerService extends EventEmitter {
       try {
         await this.executeTaskCommand(task, execution, command, implantId);
       } catch (error) {
-        this.logger.error('Command retry failed', {
-          taskId: task.id,
-          executionId: execution.id,
-          commandId: command.id,
-          retryCount,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
+        this.logger.error(
+          'Command retry failed',
+          error instanceof Error ? error : new Error('Unknown error'),
+          {
+            taskId: task.id,
+            executionId: execution.id,
+            commandId: command.id,
+            retryCount,
+          }
+        );
       }
     }, delayMs);
 

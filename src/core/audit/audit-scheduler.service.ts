@@ -136,10 +136,10 @@ export class AuditSchedulerService {
         success: true,
       });
     } catch (error) {
-      this.logger.error('Failed to apply retention policy', {
-        error: (error as Error).message,
-        stack: (error as Error).stack,
-      });
+      this.logger.error(
+        'Failed to apply retention policy',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
 
       await this.auditService.logEvent({
         action: 'scheduled_retention_policy',
@@ -173,10 +173,10 @@ export class AuditSchedulerService {
 
       this.logger.info('Audit statistics cleanup completed');
     } catch (error) {
-      this.logger.error('Failed to cleanup audit statistics', {
-        error: (error as Error).message,
-        stack: (error as Error).stack,
-      });
+      this.logger.error(
+        'Failed to cleanup audit statistics',
+        error instanceof Error ? error : new Error('Unknown error')
+      );
 
       await this.auditService.logEvent({
         action: 'scheduled_statistics_cleanup',

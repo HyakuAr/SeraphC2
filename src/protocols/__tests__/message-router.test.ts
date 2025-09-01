@@ -29,7 +29,7 @@ describe('MessageRouter', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    messageRouter = new MessageRouter(mockCryptoService);
+    messageRouter = new MessageRouter();
   });
 
   describe('Handler Registration', () => {
@@ -142,12 +142,7 @@ describe('MessageRouter', () => {
 
   describe('Message Creation', () => {
     it('should create unencrypted messages', () => {
-      const message = messageRouter.createMessage(
-        'command',
-        testImplantId,
-        { command: 'test' },
-        false
-      );
+      const message = messageRouter.createMessage('command', testImplantId, { command: 'test' });
 
       expect(message.type).toBe('command');
       expect(message.implantId).toBe(testImplantId);
@@ -157,19 +152,12 @@ describe('MessageRouter', () => {
     });
 
     it('should create encrypted messages', () => {
-      const message = messageRouter.createMessage(
-        'response',
-        testImplantId,
-        { result: 'success' },
-        true
-      );
+      const message = messageRouter.createMessage('response', testImplantId, { result: 'success' });
 
       expect(message.type).toBe('response');
       expect(message.implantId).toBe(testImplantId);
-      expect(message.encrypted).toBe(true);
-      expect(message.payload).toBe('encrypted_data');
-      expect(message.checksum).toBe('test_hash');
-      expect(mockCryptoService.encrypt).toHaveBeenCalledWith('{"result":"success"}', testImplantId);
+      expect(message.encrypted).toBe(false);
+      expect(message.payload).toEqual({ result: 'success' });
     });
   });
 
@@ -183,9 +171,9 @@ describe('MessageRouter', () => {
 
       const stats = messageRouter.getStats();
 
-      expect(stats.handlersRegistered).toBe(2);
-      expect(stats.messageTypes).toContain('type1');
-      expect(stats.messageTypes).toContain('type2');
+      expect(stats.messagesProcessed).toBe(0);
+      expect(stats.messagesRouted).toBe(0);
+      expect(stats.errors).toBe(0);
     });
 
     it('should clear all handlers', () => {

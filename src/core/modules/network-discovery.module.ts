@@ -15,6 +15,7 @@ import {
 } from '../../types/modules';
 import { Logger } from '../../utils/logger';
 
+import { createErrorWithContext } from '../../types/errors';
 export class NetworkDiscoveryModule {
   private logger: Logger;
 
@@ -398,9 +399,8 @@ export class NetworkDiscoveryModule {
 
       return result;
     } catch (error) {
-      this.logger.error('Port scan failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Port scan failed', errorWithContext);
       throw error;
     }
   }
@@ -469,9 +469,8 @@ export class NetworkDiscoveryModule {
 
       return result;
     } catch (error) {
-      this.logger.error('Host discovery failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Host discovery failed', errorWithContext);
       throw error;
     }
   }
@@ -560,9 +559,8 @@ export class NetworkDiscoveryModule {
 
       return result;
     } catch (error) {
-      this.logger.error('Service enumeration failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Service enumeration failed', errorWithContext);
       throw error;
     }
   }
@@ -625,9 +623,8 @@ export class NetworkDiscoveryModule {
 
       return result;
     } catch (error) {
-      this.logger.error('SMB enumeration failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('SMB enumeration failed', errorWithContext);
       throw error;
     }
   }

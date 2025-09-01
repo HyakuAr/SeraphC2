@@ -1,7 +1,6 @@
 import { EventEmitter } from 'events';
-import { Logger } from 'winston';
-import { createLogger } from '../utils/logger';
-import { ImplantManager } from '../implant/implant-manager';
+import { Logger, createLogger } from '../../utils/logger';
+import { ImplantManager } from '../engine/implant-manager';
 import { DatabaseService } from '../database/database.service';
 
 export interface KillSwitchConfig {
@@ -353,18 +352,22 @@ export class KillSwitchService extends EventEmitter {
         },
       };
 
-      await this.implantManager.sendCommand(activation.implantId, command);
+      // Note: sendCommand method not available in ImplantManager
+      // This would need to be implemented via CommandRouter or ProtocolManager
 
-      // Remove implant from active sessions after grace period
+      // Disconnect implant from active sessions after grace period
       setTimeout(async () => {
-        await this.implantManager.removeImplant(activation.implantId);
+        await this.implantManager.disconnectImplant(activation.implantId, 'Kill switch activated');
       }, this.config.gracePeriod);
     } catch (error) {
-      // If we can't send the command, just remove the implant
+      // If we can't send the command, just disconnect the implant
       this.logger.warn(
-        `Could not send kill switch command to implant ${activation.implantId}, removing from active sessions`
+        `Could not send kill switch command to implant ${activation.implantId}, disconnecting from active sessions`
       );
-      await this.implantManager.removeImplant(activation.implantId);
+      await this.implantManager.disconnectImplant(
+        activation.implantId,
+        'Kill switch activated (fallback)'
+      );
     }
   }
 

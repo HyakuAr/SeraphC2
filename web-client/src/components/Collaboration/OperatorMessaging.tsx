@@ -34,8 +34,8 @@ import {
 import {
   Send as SendIcon,
   Message as MessageIcon,
-  Broadcast as BroadcastIcon,
-  Priority as PriorityIcon,
+  Campaign as BroadcastIcon,
+  PriorityHigh as PriorityIcon,
   Close as CloseIcon,
 } from '@mui/icons-material';
 import { useWebSocket } from '../../hooks/useWebSocket';
@@ -251,7 +251,7 @@ export const OperatorMessaging: React.FC<OperatorMessagingProps> = ({
                   </Typography>
 
                   <Box display="flex" alignItems="center" justifyContent="space-between" mt={0.5}>
-                    <Typography variant="caption" opacity={0.8}>
+                    <Typography variant="caption" sx={{ opacity: 0.8 }}>
                       {formatTimestamp(message.timestamp)}
                     </Typography>
 

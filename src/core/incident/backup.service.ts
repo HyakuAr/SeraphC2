@@ -1,6 +1,5 @@
 import { EventEmitter } from 'events';
-import { Logger } from 'winston';
-import { createLogger } from '../utils/logger';
+import { Logger, createLogger } from '../../utils/logger';
 import { DatabaseService } from '../database/database.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { promises as fs } from 'fs';
@@ -437,7 +436,7 @@ export class BackupService extends EventEmitter {
 
     let finalData = compressed;
     if (this.config.encryptionEnabled) {
-      finalData = await this.cryptoService.encrypt(compressed);
+      finalData = this.cryptoService.encryptBuffer(compressed);
     }
 
     await fs.writeFile(filePath, finalData);
@@ -466,7 +465,7 @@ export class BackupService extends EventEmitter {
 
     let finalData = compressed;
     if (this.config.encryptionEnabled) {
-      finalData = await this.cryptoService.encrypt(compressed);
+      finalData = this.cryptoService.encryptBuffer(compressed);
     }
 
     await fs.writeFile(filePath, finalData);
@@ -488,7 +487,7 @@ export class BackupService extends EventEmitter {
     const compressed = await gzip(Buffer.from(JSON.stringify(keyData)));
 
     // Always encrypt crypto keys regardless of global setting
-    const encrypted = await this.cryptoService.encrypt(compressed);
+    const encrypted = this.cryptoService.encryptBuffer(compressed);
     await fs.writeFile(filePath, encrypted);
 
     return {
@@ -510,7 +509,7 @@ export class BackupService extends EventEmitter {
 
     let finalData = compressed;
     if (this.config.encryptionEnabled) {
-      finalData = await this.cryptoService.encrypt(compressed);
+      finalData = this.cryptoService.encryptBuffer(compressed);
     }
 
     await fs.writeFile(filePath, finalData);
@@ -536,7 +535,7 @@ export class BackupService extends EventEmitter {
 
     let finalData = compressed;
     if (this.config.encryptionEnabled) {
-      finalData = await this.cryptoService.encrypt(compressed);
+      finalData = this.cryptoService.encryptBuffer(compressed);
     }
 
     await fs.writeFile(filePath, finalData);
@@ -561,7 +560,7 @@ export class BackupService extends EventEmitter {
 
     let finalData = compressed;
     if (this.config.encryptionEnabled) {
-      finalData = await this.cryptoService.encrypt(compressed);
+      finalData = this.cryptoService.encryptBuffer(compressed);
     }
 
     await fs.writeFile(filePath, finalData);
@@ -596,7 +595,7 @@ export class BackupService extends EventEmitter {
 
     // Decrypt if encrypted
     if (component.encrypted) {
-      data = await this.cryptoService.decrypt(data);
+      data = this.cryptoService.decryptBuffer(data);
     }
 
     // Decompress

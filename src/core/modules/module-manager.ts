@@ -5,6 +5,7 @@
 
 import { EventEmitter } from 'events';
 import { ModuleLoader, ModuleLoaderConfig } from './module-loader';
+import { createErrorWithContext } from '../../types/errors';
 import {
   Module,
   ModuleExecution,
@@ -83,9 +84,8 @@ export class ModuleManager extends EventEmitter {
         loadedModules: this.moduleLoader.getLoadedModules().length,
       });
     } catch (error) {
-      this.logger.error('Failed to initialize ModuleManager', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Failed to initialize ModuleManager', errorWithContext);
       throw error;
     }
   }
@@ -347,9 +347,8 @@ export class ModuleManager extends EventEmitter {
 
       this.logger.info('ModuleManager shutdown completed');
     } catch (error) {
-      this.logger.error('Error during ModuleManager shutdown', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Error during ModuleManager shutdown', errorWithContext);
       throw error;
     }
   }
@@ -375,9 +374,8 @@ export class ModuleManager extends EventEmitter {
 
       this.logger.info('Built-in modules registered successfully');
     } catch (error) {
-      this.logger.error('Failed to register built-in modules', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorWithContext = createErrorWithContext(error);
+      this.logger.error('Failed to register built-in modules', errorWithContext);
       throw error;
     }
   }

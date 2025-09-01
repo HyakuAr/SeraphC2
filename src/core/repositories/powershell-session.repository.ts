@@ -7,6 +7,7 @@ import { PowerShellSessionRepository } from '../services/powershell.service';
 import { DatabaseConnection } from '../database/connection';
 import { Logger } from '../../utils/logger';
 
+import { createErrorWithContext } from '../../types/errors';
 export class PostgresPowerShellSessionRepository implements PowerShellSessionRepository {
   private dbConnection: DatabaseConnection;
   private logger: Logger;
@@ -39,11 +40,8 @@ export class PostgresPowerShellSessionRepository implements PowerShellSessionRep
       const result = await this.dbConnection.query(query, values);
       return this.mapRowToSession(result.rows[0]);
     } catch (error) {
-      this.logger.error('Failed to create PowerShell session', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId: session.implantId,
-        operatorId: session.operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, {});
+      this.logger.error('Failed to create PowerShell session', errorWithContext);
       throw error;
     }
   }
@@ -55,10 +53,8 @@ export class PostgresPowerShellSessionRepository implements PowerShellSessionRep
       const result = await this.dbConnection.query(query, [id]);
       return result.rows.length > 0 ? this.mapRowToSession(result.rows[0]) : null;
     } catch (error) {
-      this.logger.error('Failed to find PowerShell session by ID', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        id,
-      });
+      const errorWithContext = createErrorWithContext(error, { id });
+      this.logger.error('Failed to find PowerShell session by ID', errorWithContext);
       throw error;
     }
   }
@@ -71,10 +67,8 @@ export class PostgresPowerShellSessionRepository implements PowerShellSessionRep
       const result = await this.dbConnection.query(query, [implantId]);
       return result.rows.map((row: any) => this.mapRowToSession(row));
     } catch (error) {
-      this.logger.error('Failed to find PowerShell sessions by implant', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        implantId,
-      });
+      const errorWithContext = createErrorWithContext(error, { implantId });
+      this.logger.error('Failed to find PowerShell sessions by implant', errorWithContext);
       throw error;
     }
   }
@@ -87,10 +81,8 @@ export class PostgresPowerShellSessionRepository implements PowerShellSessionRep
       const result = await this.dbConnection.query(query, [operatorId]);
       return result.rows.map((row: any) => this.mapRowToSession(row));
     } catch (error) {
-      this.logger.error('Failed to find PowerShell sessions by operator', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        operatorId,
-      });
+      const errorWithContext = createErrorWithContext(error, { operatorId });
+      this.logger.error('Failed to find PowerShell sessions by operator', errorWithContext);
       throw error;
     }
   }
@@ -141,10 +133,8 @@ export class PostgresPowerShellSessionRepository implements PowerShellSessionRep
       }
       return this.mapRowToSession(result.rows[0]);
     } catch (error) {
-      this.logger.error('Failed to update PowerShell session', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        id,
-      });
+      const errorWithContext = createErrorWithContext(error, { id });
+      this.logger.error('Failed to update PowerShell session', errorWithContext);
       throw error;
     }
   }
@@ -158,10 +148,8 @@ export class PostgresPowerShellSessionRepository implements PowerShellSessionRep
         throw new Error(`PowerShell session with ID ${id} not found`);
       }
     } catch (error) {
-      this.logger.error('Failed to delete PowerShell session', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        id,
-      });
+      const errorWithContext = createErrorWithContext(error, { id });
+      this.logger.error('Failed to delete PowerShell session', errorWithContext);
       throw error;
     }
   }
@@ -175,10 +163,8 @@ export class PostgresPowerShellSessionRepository implements PowerShellSessionRep
         throw new Error(`PowerShell session with ID ${id} not found`);
       }
     } catch (error) {
-      this.logger.error('Failed to update PowerShell session activity', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        id,
-      });
+      const errorWithContext = createErrorWithContext(error, { id });
+      this.logger.error('Failed to update PowerShell session activity', errorWithContext);
       throw error;
     }
   }

@@ -7,8 +7,12 @@ import { Request, Response, NextFunction } from 'express';
 import { AuditService } from '../../core/audit/audit.service';
 
 export interface AuditedRequest extends Request {
-  operatorId?: string;
-  startTime?: number;
+  startTime: number;
+  user?: {
+    id: string;
+    username: string;
+    role: string;
+  };
 }
 
 export class AuditMiddleware {
