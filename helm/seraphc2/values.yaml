@@ -1,0 +1,404 @@
+# Default values for seraphc2.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global configuration
+global:
+  imageRegistry: ''
+  imagePullSecrets: []
+  storageClass: ''
+
+# Application configuration
+app:
+  name: seraphc2
+  version: '1.0.0'
+
+image:
+  registry: ''
+  repository: seraphc2
+  tag: 'latest'
+  pullPolicy: Always
+  pullSecrets: []
+
+# Deployment configuration
+deployment:
+  replicaCount: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+
+  # Pod configuration
+  podAnnotations:
+    prometheus.io/scrape: 'true'
+    prometheus.io/port: '9090'
+    prometheus.io/path: '/metrics'
+
+  podLabels: {}
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroup: 1001
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  # Resource configuration
+  resources:
+    requests:
+      memory: '1Gi'
+      cpu: '500m'
+    limits:
+      memory: '2Gi'
+      cpu: '1000m'
+
+  # Node selection
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  # Probes
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# Service configuration
+service:
+  type: ClusterIP
+  ports:
+    http: 80
+    https: 443
+    metrics: 9090
+  annotations: {}
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: 'nginx'
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: 'true'
+    nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
+    nginx.ingress.kubernetes.io/rate-limit: '100'
+    nginx.ingress.kubernetes.io/rate-limit-window: '1m'
+    nginx.ingress.kubernetes.io/proxy-body-size: '10m'
+    cert-manager.io/cluster-issuer: 'letsencrypt-prod'
+
+  hosts:
+    - host: seraphc2.local
+      paths:
+        - path: /
+          pathType: Prefix
+
+  tls:
+    - secretName: seraphc2-tls
+      hosts:
+        - seraphc2.local
+
+# Metrics ingress (separate for security)
+metricsIngress:
+  enabled: false
+  className: 'nginx'
+  annotations:
+    nginx.ingress.kubernetes.io/whitelist-source-range: '10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: seraphc2-metrics-auth
+
+  hosts:
+    - host: metrics.seraphc2.local
+      paths:
+        - path: /metrics
+          pathType: Prefix
+
+  tls:
+    - secretName: seraphc2-metrics-tls
+      hosts:
+        - metrics.seraphc2.local
+
+# Horizontal Pod Autoscaler
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+
+# Application configuration
+config:
+  # Environment
+  nodeEnv: production
+  port: 3000
+  host: '0.0.0.0'
+  httpsPort: 8443
+
+  # CORS
+  corsOrigin: 'https://seraphc2.local'
+  corsCredentials: true
+
+  # Rate limiting
+  rateLimitWindowMs: 900000
+  rateLimitMaxRequests: 100
+  rateLimitSkipSuccessfulRequests: false
+
+  # File upload
+  maxFileSize: 10485760
+  uploadPath: '/app/uploads'
+
+  # Logging
+  logLevel: info
+  logFileEnabled: true
+  logFilePath: '/app/logs/seraphc2.log'
+  logMaxSize: 10485760
+  logMaxFiles: 5
+
+  # Monitoring
+  enableMetrics: true
+  metricsPort: 9090
+  healthCheckEnabled: true
+
+  # Performance
+  clusterMode: false
+  workerProcesses: 0
+  keepAliveTimeout: 65000
+  bodyParserLimit: '1mb'
+
+  # Security
+  hstsMaxAge: 31536000
+  cspPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none';"
+  bcryptRounds: 12
+  sessionTimeout: 3600
+
+  # Backup
+  backupEnabled: true
+  backupSchedule: '0 2 * * *'
+  backupRetentionDays: 30
+
+# Secrets configuration (will be base64 encoded)
+secrets:
+  # Database
+  dbPassword: 'change_me_strong_password'
+
+  # Redis
+  redisPassword: 'change_me_redis_password'
+
+  # JWT (must be at least 64 characters)
+  jwtSecret: 'change_me_very_long_random_jwt_secret_at_least_64_characters_for_security'
+
+  # Encryption (must be exactly 32 characters)
+  encryptionKey: 'change_me_32_character_key'
+
+  # Webhook
+  webhookSecret: 'change_me_webhook_secret'
+
+  # API key encryption
+  apiKeyEncryptionKey: 'change_me_api_key_encryption'
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  image:
+    registry: ''
+    repository: postgres
+    tag: '15-alpine'
+    pullPolicy: IfNotPresent
+
+  auth:
+    database: seraphc2
+    username: seraphc2
+    # Password will be set from secrets
+
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: ''
+
+    resources:
+      requests:
+        memory: '512Mi'
+        cpu: '250m'
+      limits:
+        memory: '1Gi'
+        cpu: '500m'
+
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 999
+      runAsGroup: 999
+      fsGroup: 999
+
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+
+# Redis configuration
+redis:
+  enabled: true
+  image:
+    registry: ''
+    repository: redis
+    tag: '7-alpine'
+    pullPolicy: IfNotPresent
+
+  auth:
+    enabled: true
+    # Password will be set from secrets
+
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+      storageClass: ''
+
+    resources:
+      requests:
+        memory: '256Mi'
+        cpu: '100m'
+      limits:
+        memory: '512Mi'
+        cpu: '250m'
+
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 999
+      runAsGroup: 999
+      fsGroup: 999
+
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+
+# Persistence configuration
+persistence:
+  uploads:
+    enabled: true
+    size: 10Gi
+    storageClass: ''
+    accessMode: ReadWriteMany
+
+# Network policies
+networkPolicy:
+  enabled: true
+  ingress:
+    enabled: true
+    namespaceSelector: {}
+    podSelector: {}
+  egress:
+    enabled: true
+
+# RBAC configuration
+rbac:
+  create: true
+  serviceAccountName: ''
+  serviceAccountAnnotations: {}
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+  # maxUnavailable: 1
+
+# Monitoring
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+    namespace: ''
+    labels: {}
+    annotations: {}
+    interval: 30s
+    scrapeTimeout: 10s
+
+# External services (if not using built-in)
+externalDatabase:
+  enabled: false
+  host: ''
+  port: 5432
+  database: seraphc2
+  username: seraphc2
+  password: ''
+  sslMode: disable
+
+externalRedis:
+  enabled: false
+  host: ''
+  port: 6379
+  password: ''
+  database: 0
+
+# Additional environment variables
+extraEnvVars: []
+# - name: EXTRA_VAR
+#   value: "extra_value"
+
+# Additional environment variables from ConfigMaps
+extraEnvVarsCM: []
+
+# Additional environment variables from Secrets
+extraEnvVarsSecret: []
+
+# Additional volumes
+extraVolumes: []
+
+# Additional volume mounts
+extraVolumeMounts: []
+
+# Init containers
+initContainers: []
+
+# Sidecar containers
+sidecars: []
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod labels
+podLabels: {}
+
+# Common labels
+commonLabels: {}
+
+# Common annotations
+commonAnnotations: {}

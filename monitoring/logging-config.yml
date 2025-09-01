@@ -1,0 +1,261 @@
+# SeraphC2 Production Logging Configuration
+# This file defines logging policies and configurations for production environments
+
+# Log Levels
+# error: Only error messages
+# warn: Warning and error messages
+# info: Informational, warning, and error messages (recommended for production)
+# debug: All messages including debug information (not recommended for production)
+log_level: info
+
+# Log Rotation Configuration
+rotation:
+  # Maximum size of a log file before rotation (in MB)
+  max_size: 20
+
+  # Maximum age of log files before deletion (in days)
+  max_age: 30
+
+  # Maximum number of rotated files to keep
+  max_files: 14
+
+  # Compress rotated log files
+  compress: true
+
+  # Rotation pattern (daily, hourly, weekly, monthly)
+  pattern: daily
+
+# Log Retention Policies
+retention:
+  # General application logs
+  application:
+    days: 30
+    compress_after_days: 7
+
+  # Security logs (longer retention for compliance)
+  security:
+    days: 90
+    compress_after_days: 30
+
+  # Audit logs (longest retention for compliance)
+  audit:
+    days: 365
+    compress_after_days: 90
+
+  # Performance logs
+  performance:
+    days: 14
+    compress_after_days: 3
+
+  # Error logs
+  error:
+    days: 60
+    compress_after_days: 14
+
+# Security Configuration
+security:
+  # Sanitize sensitive data in logs
+  sanitize_sensitive_data: true
+
+  # Hash sensitive values instead of redacting
+  hash_sensitive_values: true
+
+  # Patterns to consider sensitive (regex)
+  sensitive_patterns:
+    - 'password'
+    - 'token'
+    - 'secret'
+    - 'key'
+    - 'auth'
+    - 'credential'
+    - 'session'
+    - 'cookie'
+    - 'bearer'
+    - 'jwt'
+
+  # PII patterns to redact
+  pii_patterns:
+    - "\\b\\d{3}-\\d{2}-\\d{4}\\b" # SSN
+    - "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b" # Credit card
+    - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b" # Email
+
+  # Log failed authentication attempts
+  log_auth_failures: true
+
+  # Log authorization failures
+  log_authz_failures: true
+
+  # Log suspicious activities
+  log_suspicious_activities: true
+
+# Performance Configuration
+performance:
+  # Log slow requests (threshold in milliseconds)
+  slow_request_threshold: 5000
+
+  # Log database queries slower than threshold (milliseconds)
+  slow_query_threshold: 1000
+
+  # Sample rate for performance logs (0.0 to 1.0)
+  sample_rate: 1.0
+
+  # Buffer size for performance logs
+  buffer_size: 1000
+
+# Output Configuration
+outputs:
+  # File output
+  file:
+    enabled: true
+    directory: './logs'
+
+  # Console output (disabled in production)
+  console:
+    enabled: false
+
+  # Syslog output
+  syslog:
+    enabled: false
+    host: 'localhost'
+    port: 514
+    protocol: 'udp'
+    facility: 'local0'
+
+  # HTTP output (for centralized logging)
+  http:
+    enabled: false
+    endpoint: 'http://localhost:8080/logs'
+    method: 'POST'
+    headers:
+      Content-Type: 'application/json'
+      Authorization: 'Bearer your-token'
+
+  # Elasticsearch output
+  elasticsearch:
+    enabled: false
+    host: 'http://localhost:9200'
+    index: 'seraphc2-logs'
+    type: '_doc'
+
+# Monitoring and Alerting
+monitoring:
+  # Enable real-time log monitoring
+  real_time_monitoring: true
+
+  # Alert thresholds
+  alerts:
+    # Failed login attempts per hour
+    failed_logins_threshold: 10
+
+    # Error rate threshold (percentage)
+    error_rate_threshold: 5.0
+
+    # Response time threshold (milliseconds)
+    response_time_threshold: 5000
+
+    # Security events per hour
+    security_events_threshold: 5
+
+    # Disk usage threshold (percentage)
+    disk_usage_threshold: 85
+
+  # Health check configuration
+  health_check:
+    # Check log file accessibility
+    check_file_access: true
+
+    # Check disk space
+    check_disk_space: true
+
+    # Check log rotation
+    check_rotation: true
+
+    # Health check interval (seconds)
+    interval: 300
+
+# Compliance Configuration
+compliance:
+  # Enable audit logging
+  audit_logging: true
+
+  # Log data access events
+  log_data_access: true
+
+  # Log configuration changes
+  log_config_changes: true
+
+  # Log user management events
+  log_user_management: true
+
+  # Log privilege changes
+  log_privilege_changes: true
+
+  # Tamper protection
+  tamper_protection:
+    enabled: true
+    checksum_verification: true
+    readonly_mode: false
+
+# Format Configuration
+format:
+  # Timestamp format
+  timestamp_format: 'YYYY-MM-DD HH:mm:ss.SSS'
+
+  # Include hostname in logs
+  include_hostname: true
+
+  # Include process ID in logs
+  include_pid: true
+
+  # Include correlation ID in logs
+  include_correlation_id: true
+
+  # Include request ID in logs
+  include_request_id: true
+
+  # JSON formatting
+  json_format: true
+
+  # Pretty print JSON (disabled in production)
+  pretty_print: false
+
+# Environment-Specific Overrides
+environments:
+  development:
+    log_level: debug
+    outputs:
+      console:
+        enabled: true
+      file:
+        enabled: true
+    format:
+      pretty_print: true
+    monitoring:
+      real_time_monitoring: false
+
+  staging:
+    log_level: info
+    outputs:
+      console:
+        enabled: false
+      file:
+        enabled: true
+    monitoring:
+      real_time_monitoring: true
+
+  production:
+    log_level: info
+    outputs:
+      console:
+        enabled: false
+      file:
+        enabled: true
+    security:
+      sanitize_sensitive_data: true
+      hash_sensitive_values: true
+    monitoring:
+      real_time_monitoring: true
+    compliance:
+      audit_logging: true
+      tamper_protection:
+        enabled: true

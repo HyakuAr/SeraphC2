@@ -1,0 +1,245 @@
+# SeraphC2 Alerting Rules
+groups:
+  - name: seraphc2.rules
+    rules:
+      # Application Health Alerts
+      - alert: SeraphC2Down
+        expr: up{job="seraphc2-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: seraphc2
+        annotations:
+          summary: 'SeraphC2 application is down'
+          description: 'SeraphC2 application has been down for more than 1 minute on {{ $labels.instance }}'
+
+      - alert: SeraphC2HighErrorRate
+        expr: rate(http_requests_total{job="seraphc2-app",status=~"5.."}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: seraphc2
+        annotations:
+          summary: 'High error rate detected'
+          description: 'SeraphC2 is experiencing {{ $value | humanizePercentage }} error rate over the last 5 minutes'
+
+      - alert: SeraphC2HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="seraphc2-app"}[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: seraphc2
+        annotations:
+          summary: 'High response time detected'
+          description: '95th percentile response time is {{ $value }}s for SeraphC2'
+
+      # Resource Usage Alerts
+      - alert: SeraphC2HighCPUUsage
+        expr: rate(process_cpu_seconds_total{job="seraphc2-app"}[5m]) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          service: seraphc2
+        annotations:
+          summary: 'High CPU usage'
+          description: 'SeraphC2 CPU usage is above 80% for more than 10 minutes'
+
+      - alert: SeraphC2HighMemoryUsage
+        expr: process_resident_memory_bytes{job="seraphc2-app"} / 1024 / 1024 / 1024 > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: seraphc2
+        annotations:
+          summary: 'High memory usage'
+          description: 'SeraphC2 memory usage is above 2GB: {{ $value | humanize }}B'
+
+      - alert: SeraphC2TooManyConnections
+        expr: seraphc2_active_connections > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: seraphc2
+        annotations:
+          summary: 'Too many active connections'
+          description: 'SeraphC2 has {{ $value }} active connections, which is above the threshold'
+
+      # Database Alerts
+      - alert: PostgreSQLDown
+        expr: up{job="postgresql"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: postgresql
+        annotations:
+          summary: 'PostgreSQL is down'
+          description: 'PostgreSQL database is down for more than 1 minute'
+
+      - alert: PostgreSQLHighConnections
+        expr: pg_stat_database_numbackends / pg_settings_max_connections * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: postgresql
+        annotations:
+          summary: 'PostgreSQL high connection usage'
+          description: 'PostgreSQL connection usage is above 80%: {{ $value | humanizePercentage }}'
+
+      - alert: PostgreSQLSlowQueries
+        expr: rate(pg_stat_database_tup_returned[5m]) / rate(pg_stat_database_tup_fetched[5m]) < 0.1
+        for: 10m
+        labels:
+          severity: warning
+          service: postgresql
+        annotations:
+          summary: 'PostgreSQL slow queries detected'
+          description: 'PostgreSQL query efficiency is below 10%'
+
+      # Redis Alerts
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: redis
+        annotations:
+          summary: 'Redis is down'
+          description: 'Redis server is down for more than 1 minute'
+
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          service: redis
+        annotations:
+          summary: 'Redis high memory usage'
+          description: 'Redis memory usage is above 90%: {{ $value | humanizePercentage }}'
+
+      - alert: RedisHighConnections
+        expr: redis_connected_clients > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: redis
+        annotations:
+          summary: 'Redis high connection count'
+          description: 'Redis has {{ $value }} connected clients'
+
+      # System Resource Alerts
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 10m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: 'High CPU usage'
+          description: 'CPU usage is above 85% on {{ $labels.instance }}'
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: 'High memory usage'
+          description: 'Memory usage is above 90% on {{ $labels.instance }}'
+
+      - alert: DiskSpaceLow
+        expr: (1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: 'Low disk space'
+          description: 'Disk usage is above 85% on {{ $labels.instance }} for filesystem {{ $labels.mountpoint }}'
+
+      - alert: DiskSpaceCritical
+        expr: (1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)) * 100 > 95
+        for: 1m
+        labels:
+          severity: critical
+          service: system
+        annotations:
+          summary: 'Critical disk space'
+          description: 'Disk usage is above 95% on {{ $labels.instance }} for filesystem {{ $labels.mountpoint }}'
+
+      # Security Alerts
+      - alert: SeraphC2FailedLogins
+        expr: rate(seraphc2_failed_login_attempts_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          service: seraphc2
+          category: security
+        annotations:
+          summary: 'High failed login attempts'
+          description: 'SeraphC2 is experiencing {{ $value }} failed login attempts per second'
+
+      - alert: SeraphC2SuspiciousActivity
+        expr: rate(seraphc2_suspicious_requests_total[5m]) > 5
+        for: 1m
+        labels:
+          severity: critical
+          service: seraphc2
+          category: security
+        annotations:
+          summary: 'Suspicious activity detected'
+          description: 'SeraphC2 detected {{ $value }} suspicious requests per second'
+
+      - alert: SeraphC2UnauthorizedAccess
+        expr: rate(seraphc2_unauthorized_access_attempts_total[5m]) > 1
+        for: 1m
+        labels:
+          severity: critical
+          service: seraphc2
+          category: security
+        annotations:
+          summary: 'Unauthorized access attempts'
+          description: 'SeraphC2 detected {{ $value }} unauthorized access attempts per second'
+
+  # Kubernetes-specific alerts (if running in k8s)
+  - name: kubernetes.rules
+    rules:
+      - alert: KubernetesPodCrashLooping
+        expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: kubernetes
+        annotations:
+          summary: 'Pod is crash looping'
+          description: 'Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping'
+
+      - alert: KubernetesPodNotReady
+        expr: kube_pod_status_ready{condition="false"} == 1
+        for: 5m
+        labels:
+          severity: warning
+          service: kubernetes
+        annotations:
+          summary: 'Pod not ready'
+          description: 'Pod {{ $labels.namespace }}/{{ $labels.pod }} has been not ready for more than 5 minutes'
+
+      - alert: KubernetesNodeNotReady
+        expr: kube_node_status_ready{condition="false"} == 1
+        for: 5m
+        labels:
+          severity: critical
+          service: kubernetes
+        annotations:
+          summary: 'Node not ready'
+          description: 'Node {{ $labels.node }} has been not ready for more than 5 minutes'
+
+      - alert: KubernetesDeploymentReplicasMismatch
+        expr: kube_deployment_spec_replicas != kube_deployment_status_available_replicas
+        for: 5m
+        labels:
+          severity: warning
+          service: kubernetes
+        annotations:
+          summary: 'Deployment replicas mismatch'
+          description: 'Deployment {{ $labels.namespace }}/{{ $labels.deployment }} has {{ $value }} available replicas, expected {{ $labels.spec_replicas }}'

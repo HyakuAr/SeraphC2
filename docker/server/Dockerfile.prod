@@ -1,0 +1,77 @@
+# Multi-stage build for production optimization
+FROM node:18-alpine AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache \
+    git \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/cache/apk/*
+
+# Copy package files
+COPY package*.json ./
+
+# Install all dependencies (including dev dependencies for build)
+RUN npm ci --include=dev
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN npm run build
+
+# Build web client
+RUN npm run build:web
+
+# Production stage
+FROM node:18-alpine AS production
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S seraphc2 && \
+    adduser -S seraphc2 -u 1001 -G seraphc2
+
+# Set working directory
+WORKDIR /app
+
+# Install only production runtime dependencies
+RUN apk add --no-cache \
+    dumb-init \
+    && rm -rf /var/cache/apk/*
+
+# Copy package files
+COPY package*.json ./
+
+# Install only production dependencies
+RUN npm ci --only=production && \
+    npm cache clean --force
+
+# Copy built application from builder stage
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/web-client/build ./web-client/build
+
+# Copy necessary configuration files
+COPY --from=builder /app/migrations ./migrations
+
+# Create necessary directories with proper permissions
+RUN mkdir -p logs && \
+    chown -R seraphc2:seraphc2 /app
+
+# Switch to non-root user
+USER seraphc2
+
+# Expose ports
+EXPOSE 3000 8080 8443
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:3000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })" || exit 1
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+
+# Start the application
+CMD ["node", "dist/index.js"]

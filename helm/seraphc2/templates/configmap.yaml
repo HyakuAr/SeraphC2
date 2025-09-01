@@ -1,0 +1,149 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "seraphc2.fullname" . }}-config
+  labels:
+    {{- include "seraphc2.labels" . | nindent 4 }}
+    app.kubernetes.io/component: config
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  NODE_ENV: {{ .Values.config.nodeEnv | quote }}
+  PORT: {{ .Values.config.port | quote }}
+  HOST: {{ .Values.config.host | quote }}
+  HTTPS_PORT: {{ .Values.config.httpsPort | quote }}
+  DB_HOST: {{ include "seraphc2.database.host" . | quote }}
+  DB_PORT: {{ include "seraphc2.database.port" . | quote }}
+  DB_NAME: {{ include "seraphc2.database.name" . | quote }}
+  DB_USER: {{ include "seraphc2.database.username" . | quote }}
+  {{- if .Values.externalDatabase.enabled }}
+  DB_SSL: {{ .Values.externalDatabase.sslMode | ne "disable" | quote }}
+  {{- else }}
+  DB_SSL: "false"
+  {{- end }}
+  DB_POOL_MIN: "2"
+  DB_POOL_MAX: "10"
+  REDIS_HOST: {{ include "seraphc2.redis.host" . | quote }}
+  REDIS_PORT: {{ include "seraphc2.redis.port" . | quote }}
+  {{- if .Values.externalRedis.enabled }}
+  REDIS_DB: {{ .Values.externalRedis.database | quote }}
+  {{- else }}
+  REDIS_DB: "0"
+  {{- end }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  LOG_FILE_ENABLED: {{ .Values.config.logFileEnabled | quote }}
+  LOG_FILE_PATH: {{ .Values.config.logFilePath | quote }}
+  LOG_MAX_SIZE: {{ .Values.config.logMaxSize | quote }}
+  LOG_MAX_FILES: {{ .Values.config.logMaxFiles | quote }}
+  CORS_ORIGIN: {{ .Values.config.corsOrigin | quote }}
+  CORS_CREDENTIALS: {{ .Values.config.corsCredentials | quote }}
+  RATE_LIMIT_WINDOW_MS: {{ .Values.config.rateLimitWindowMs | quote }}
+  RATE_LIMIT_MAX_REQUESTS: {{ .Values.config.rateLimitMaxRequests | quote }}
+  RATE_LIMIT_SKIP_SUCCESSFUL_REQUESTS: {{ .Values.config.rateLimitSkipSuccessfulRequests | quote }}
+  MAX_FILE_SIZE: {{ .Values.config.maxFileSize | quote }}
+  UPLOAD_PATH: {{ .Values.config.uploadPath | quote }}
+  ENABLE_METRICS: {{ .Values.config.enableMetrics | quote }}
+  METRICS_PORT: {{ .Values.config.metricsPort | quote }}
+  HEALTH_CHECK_ENABLED: {{ .Values.config.healthCheckEnabled | quote }}
+  CLUSTER_MODE: {{ .Values.config.clusterMode | quote }}
+  WORKER_PROCESSES: {{ .Values.config.workerProcesses | quote }}
+  KEEP_ALIVE_TIMEOUT: {{ .Values.config.keepAliveTimeout | quote }}
+  BODY_PARSER_LIMIT: {{ .Values.config.bodyParserLimit | quote }}
+  HSTS_MAX_AGE: {{ .Values.config.hstsMaxAge | quote }}
+  CSP_POLICY: {{ .Values.config.cspPolicy | quote }}
+  BCRYPT_ROUNDS: {{ .Values.config.bcryptRounds | quote }}
+  SESSION_TIMEOUT: {{ .Values.config.sessionTimeout | quote }}
+  BACKUP_ENABLED: {{ .Values.config.backupEnabled | quote }}
+  BACKUP_SCHEDULE: {{ .Values.config.backupSchedule | quote }}
+  BACKUP_RETENTION_DAYS: {{ .Values.config.backupRetentionDays | quote }}
+  {{- range .Values.extraEnvVars }}
+  {{ .name }}: {{ .value | quote }}
+  {{- end }}
+
+{{- if .Values.redis.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "seraphc2.fullname" . }}-redis-config
+  labels:
+    {{- include "seraphc2.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis-config
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  redis.conf: |
+    # Redis Production Configuration for SeraphC2 on Kubernetes
+    
+    # Network and Security
+    bind 0.0.0.0
+    protected-mode yes
+    port 6379
+    
+    # Memory Management
+    maxmemory 256mb
+    maxmemory-policy allkeys-lru
+    
+    # Persistence
+    save 900 1
+    save 300 10
+    save 60 10000
+    
+    # Disable dangerous commands in production
+    rename-command FLUSHDB ""
+    rename-command FLUSHALL ""
+    rename-command KEYS ""
+    rename-command CONFIG "CONFIG_b835c3f8a5d9e7f2"
+    rename-command DEBUG ""
+    rename-command EVAL ""
+    rename-command SHUTDOWN SHUTDOWN_b835c3f8a5d9e7f2
+    
+    # Logging
+    loglevel notice
+    logfile ""
+    
+    # Performance
+    tcp-keepalive 300
+    timeout 0
+    tcp-backlog 511
+    
+    # Slow log
+    slowlog-log-slower-than 10000
+    slowlog-max-len 128
+    
+    # Latency monitoring
+    latency-monitor-threshold 100
+    
+    # Client output buffer limits
+    client-output-buffer-limit normal 0 0 0
+    client-output-buffer-limit replica 256mb 64mb 60
+    client-output-buffer-limit pubsub 32mb 8mb 60
+    
+    # Security
+    stop-writes-on-bgsave-error yes
+    rdbcompression yes
+    rdbchecksum yes
+    
+    # Disable Lua debugging
+    lua-time-limit 5000
+    
+    # Set the number of databases
+    databases 16
+    
+    # Append only file
+    appendonly yes
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+    no-appendfsync-on-rewrite no
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+    aof-load-truncated yes
+    aof-use-rdb-preamble yes
+    
+    # HyperLogLog
+    hll-sparse-max-bytes 3000
+{{- end }}

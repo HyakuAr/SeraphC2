@@ -1,0 +1,334 @@
+name: Version Bump
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Type of version bump'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - prerelease
+        default: 'patch'
+      prerelease_identifier:
+        description: 'Prerelease identifier (alpha, beta, rc)'
+        required: false
+        type: string
+        default: 'alpha'
+      custom_version:
+        description: 'Custom version (overrides bump_type)'
+        required: false
+        type: string
+      create_release:
+        description: 'Create release after version bump'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  version-bump:
+    name: Bump Version
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    outputs:
+      new-version: ${{ steps.version.outputs.new-version }}
+      old-version: ${{ steps.version.outputs.old-version }}
+      version-changed: ${{ steps.version.outputs.version-changed }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Get current version
+        id: current-version
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "current-version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
+      - name: Calculate new version
+        id: version
+        run: |
+          CURRENT_VERSION="${{ steps.current-version.outputs.current-version }}"
+          BUMP_TYPE="${{ github.event.inputs.bump_type }}"
+          PRERELEASE_ID="${{ github.event.inputs.prerelease_identifier }}"
+          CUSTOM_VERSION="${{ github.event.inputs.custom_version }}"
+
+          echo "old-version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+          if [ -n "$CUSTOM_VERSION" ]; then
+            # Use custom version if provided
+            NEW_VERSION="$CUSTOM_VERSION"
+            echo "Using custom version: $NEW_VERSION"
+          else
+            # Calculate version based on bump type
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+            
+            # Remove any prerelease suffix from patch version
+            PATCH=$(echo "$PATCH" | sed 's/-.*$//')
+
+            case "$BUMP_TYPE" in
+              "major")
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+                ;;
+              "minor")
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+                ;;
+              "patch")
+                PATCH=$((PATCH + 1))
+                NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+                ;;
+              "prerelease")
+                # Check if current version is already a prerelease
+                if [[ "$CURRENT_VERSION" =~ -([a-zA-Z]+)\.?([0-9]+)?$ ]]; then
+                  # Increment prerelease number
+                  PRERELEASE_TYPE="${BASH_REMATCH[1]}"
+                  PRERELEASE_NUM="${BASH_REMATCH[2]:-0}"
+                  PRERELEASE_NUM=$((PRERELEASE_NUM + 1))
+                  NEW_VERSION="$MAJOR.$MINOR.$PATCH-$PRERELEASE_TYPE.$PRERELEASE_NUM"
+                else
+                  # Create new prerelease
+                  PATCH=$((PATCH + 1))
+                  NEW_VERSION="$MAJOR.$MINOR.$PATCH-$PRERELEASE_ID.1"
+                fi
+                ;;
+              *)
+                echo "❌ Invalid bump type: $BUMP_TYPE"
+                exit 1
+                ;;
+            esac
+          fi
+
+          # Validate version format
+          if [[ ! "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(\.[0-9]+)?)?$ ]]; then
+            echo "❌ Invalid version format: $NEW_VERSION"
+            exit 1
+          fi
+
+          echo "new-version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
+
+          # Check if version actually changed
+          if [ "$CURRENT_VERSION" = "$NEW_VERSION" ]; then
+            echo "version-changed=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Version unchanged: $NEW_VERSION"
+          else
+            echo "version-changed=true" >> $GITHUB_OUTPUT
+            echo "✅ Version will change: $CURRENT_VERSION → $NEW_VERSION"
+          fi
+
+      - name: Update package.json version
+        if: steps.version.outputs.version-changed == 'true'
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new-version }}"
+
+          # Update main package.json
+          npm version "$NEW_VERSION" --no-git-tag-version
+
+          # Update web-client package.json if it exists
+          if [ -f "web-client/package.json" ]; then
+            cd web-client
+            npm version "$NEW_VERSION" --no-git-tag-version
+            cd ..
+          fi
+
+      - name: Generate changelog
+        if: steps.version.outputs.version-changed == 'true'
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new-version }}"
+          OLD_VERSION="${{ steps.version.outputs.old-version }}"
+
+          # Generate changelog using our script
+          npx ts-node scripts/generate-changelog.ts "$NEW_VERSION" "v$OLD_VERSION"
+
+      - name: Update version in other files
+        if: steps.version.outputs.version-changed == 'true'
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new-version }}"
+
+          # Update version in README.md if it contains version references
+          if grep -q "Version.*[0-9]\+\.[0-9]\+\.[0-9]\+" README.md 2>/dev/null; then
+            sed -i "s/Version [0-9]\+\.[0-9]\+\.[0-9]\+[^[:space:]]*/Version $NEW_VERSION/g" README.md
+          fi
+
+          # Update version in docker-compose files
+          if [ -f "docker-compose.yml" ]; then
+            sed -i "s/seraphc2:[0-9]\+\.[0-9]\+\.[0-9]\+[^[:space:]]*/seraphc2:$NEW_VERSION/g" docker-compose.yml
+          fi
+
+          if [ -f "docker-compose.prod.yml" ]; then
+            sed -i "s/seraphc2:[0-9]\+\.[0-9]\+\.[0-9]\+[^[:space:]]*/seraphc2:$NEW_VERSION/g" docker-compose.prod.yml
+          fi
+
+          # Update version in Helm chart
+          if [ -f "helm/seraphc2/Chart.yaml" ]; then
+            sed -i "s/^version: .*/version: $NEW_VERSION/" helm/seraphc2/Chart.yaml
+            sed -i "s/^appVersion: .*/appVersion: \"$NEW_VERSION\"/" helm/seraphc2/Chart.yaml
+          fi
+
+      - name: Run tests
+        if: steps.version.outputs.version-changed == 'true'
+        run: |
+          # Run basic tests to ensure version bump didn't break anything
+          npm run lint
+          npm run build
+          npm test -- --passWithNoTests
+
+      - name: Commit changes
+        if: steps.version.outputs.version-changed == 'true'
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new-version }}"
+
+          # Add all changed files
+          git add .
+
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            # Commit changes
+            git commit -m "chore: bump version to $NEW_VERSION
+
+            - Updated package.json version
+            - Generated changelog for $NEW_VERSION
+            - Updated version references in documentation and configuration files
+            
+            [skip ci]"
+            
+            # Push changes
+            git push origin main
+            
+            echo "✅ Version bump committed and pushed"
+          fi
+
+      - name: Create and push tag
+        if: steps.version.outputs.version-changed == 'true'
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new-version }}"
+
+          # Create annotated tag
+          git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION
+
+          This release includes:
+          - Version bump to $NEW_VERSION
+          - Updated changelog
+          - All changes since previous release
+
+          See CHANGELOG.md for detailed changes."
+
+          # Push tag
+          git push origin "v$NEW_VERSION"
+
+          echo "✅ Tag v$NEW_VERSION created and pushed"
+
+      - name: Create summary
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new-version }}"
+          OLD_VERSION="${{ steps.version.outputs.old-version }}"
+          VERSION_CHANGED="${{ steps.version.outputs.version-changed }}"
+
+          echo "## Version Bump Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$VERSION_CHANGED" = "true" ]; then
+            echo "✅ **Version successfully bumped**" >> $GITHUB_STEP_SUMMARY
+            echo "- **Previous version:** $OLD_VERSION" >> $GITHUB_STEP_SUMMARY
+            echo "- **New version:** $NEW_VERSION" >> $GITHUB_STEP_SUMMARY
+            echo "- **Bump type:** ${{ github.event.inputs.bump_type }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Changes made:" >> $GITHUB_STEP_SUMMARY
+            echo "- Updated package.json version" >> $GITHUB_STEP_SUMMARY
+            echo "- Generated changelog entry" >> $GITHUB_STEP_SUMMARY
+            echo "- Updated version references in configuration files" >> $GITHUB_STEP_SUMMARY
+            echo "- Created and pushed git tag v$NEW_VERSION" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Next steps:" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ github.event.inputs.create_release }}" = "true" ]; then
+              echo "- Release workflow will be triggered automatically" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- Manually trigger release workflow if needed" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⚠️ **No version change**" >> $GITHUB_STEP_SUMMARY
+            echo "- Current version: $OLD_VERSION" >> $GITHUB_STEP_SUMMARY
+            echo "- Calculated version: $NEW_VERSION" >> $GITHUB_STEP_SUMMARY
+            echo "- No changes were made" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  trigger-release:
+    name: Trigger Release
+    runs-on: ubuntu-latest
+    needs: version-bump
+    if: |
+      needs.version-bump.outputs.version-changed == 'true' && 
+      github.event.inputs.create_release == 'true'
+
+    steps:
+      - name: Trigger release workflow
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const newVersion = '${{ needs.version-bump.outputs.new-version }}';
+
+            console.log(`Triggering release workflow for version ${newVersion}`);
+
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'release.yml',
+              ref: 'main',
+              inputs: {
+                version: newVersion,
+                prerelease: newVersion.includes('-') ? 'true' : 'false'
+              }
+            });
+
+            console.log('✅ Release workflow triggered successfully');
+
+  notify-completion:
+    name: Notify Completion
+    runs-on: ubuntu-latest
+    needs: [version-bump, trigger-release]
+    if: always() && needs.version-bump.outputs.version-changed == 'true'
+
+    steps:
+      - name: Create completion notification
+        run: |
+          NEW_VERSION="${{ needs.version-bump.outputs.new-version }}"
+
+          echo "🎉 Version bump workflow completed successfully!"
+          echo "New version: $NEW_VERSION"
+          echo "Tag: v$NEW_VERSION"
+
+          if [ "${{ github.event.inputs.create_release }}" = "true" ]; then
+            echo "Release workflow has been triggered automatically."
+          fi

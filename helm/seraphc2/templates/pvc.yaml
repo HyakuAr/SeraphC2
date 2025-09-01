@@ -1,0 +1,77 @@
+{{- if .Values.postgresql.enabled }}
+{{- if .Values.postgresql.primary.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "seraphc2.postgresql.fullname" . }}-data
+  labels:
+    {{- include "seraphc2.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database-storage
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.postgresql.primary.persistence.size }}
+  {{- $storageClass := .Values.postgresql.primary.persistence.storageClass | default (include "seraphc2.storageClass" .) }}
+  {{- if $storageClass }}
+  storageClassName: {{ $storageClass }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+{{- if .Values.redis.enabled }}
+{{- if .Values.redis.master.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "seraphc2.redis.fullname" . }}-data
+  labels:
+    {{- include "seraphc2.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cache-storage
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.redis.master.persistence.size }}
+  {{- $storageClass := .Values.redis.master.persistence.storageClass | default (include "seraphc2.storageClass" .) }}
+  {{- if $storageClass }}
+  storageClassName: {{ $storageClass }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+{{- if .Values.persistence.uploads.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "seraphc2.fullname" . }}-uploads
+  labels:
+    {{- include "seraphc2.labels" . | nindent 4 }}
+    app.kubernetes.io/component: uploads-storage
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.uploads.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.uploads.size }}
+  {{- $storageClass := .Values.persistence.uploads.storageClass | default (include "seraphc2.storageClass" .) }}
+  {{- if $storageClass }}
+  storageClassName: {{ $storageClass }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,58 @@
+{{- if .Values.rbac.create -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "seraphc2.serviceAccountName" . }}
+  labels:
+    {{- include "seraphc2.labels" . | nindent 4 }}
+    app.kubernetes.io/component: service-account
+  {{- with .Values.rbac.serviceAccountAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+automountServiceAccountToken: false
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "seraphc2.fullname" . }}
+  labels:
+    {{- include "seraphc2.labels" . | nindent 4 }}
+    app.kubernetes.io/component: role
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "seraphc2.fullname" . }}
+  labels:
+    {{- include "seraphc2.labels" . | nindent 4 }}
+    app.kubernetes.io/component: role-binding
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "seraphc2.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ include "seraphc2.fullname" . }}
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

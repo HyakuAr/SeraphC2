@@ -1,0 +1,21 @@
+apiVersion: v2
+name: seraphc2
+description: SeraphC2 - Advanced Command and Control Framework
+type: application
+version: 1.0.0
+appVersion: '1.0.0'
+home: https://github.com/your-org/seraphc2
+sources:
+  - https://github.com/your-org/seraphc2
+maintainers:
+  - name: SeraphC2 Team
+    email: team@seraphc2.com
+keywords:
+  - c2
+  - command-control
+  - security
+  - remote-access
+  - seraphc2
+annotations:
+  category: Security
+  licenses: MIT

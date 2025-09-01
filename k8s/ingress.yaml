@@ -1,0 +1,137 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: seraphc2-ingress
+  namespace: seraphc2
+  labels:
+    app.kubernetes.io/name: seraphc2
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/part-of: seraphc2
+  annotations:
+    # Nginx Ingress Controller annotations
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: 'true'
+    nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
+    nginx.ingress.kubernetes.io/backend-protocol: 'HTTP'
+
+    # Security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Frame-Options DENY always;
+      add_header X-Content-Type-Options nosniff always;
+      add_header X-XSS-Protection "1; mode=block" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+      add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none';" always;
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # Rate limiting
+    nginx.ingress.kubernetes.io/rate-limit: '100'
+    nginx.ingress.kubernetes.io/rate-limit-window: '1m'
+    nginx.ingress.kubernetes.io/rate-limit-connections: '10'
+
+    # Client body size
+    nginx.ingress.kubernetes.io/proxy-body-size: '10m'
+
+    # Timeouts
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: '5'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '60'
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '60'
+
+    # WebSocket support
+    nginx.ingress.kubernetes.io/proxy-set-headers: |
+      X-Forwarded-For $proxy_add_x_forwarded_for;
+      X-Forwarded-Proto $scheme;
+      X-Real-IP $remote_addr;
+      Host $host;
+
+    # Enable CORS (if needed)
+    nginx.ingress.kubernetes.io/enable-cors: 'true'
+    nginx.ingress.kubernetes.io/cors-allow-origin: 'https://yourdomain.com'
+    nginx.ingress.kubernetes.io/cors-allow-methods: 'GET, POST, PUT, DELETE, OPTIONS'
+    nginx.ingress.kubernetes.io/cors-allow-headers: 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization'
+
+    # Certificate management (cert-manager)
+    cert-manager.io/cluster-issuer: 'letsencrypt-prod'
+
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - yourdomain.com # Change this to your domain
+        - www.yourdomain.com # Change this to your domain
+      secretName: seraphc2-tls
+  rules:
+    - host: yourdomain.com # Change this to your domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: seraphc2-service
+                port:
+                  number: 80
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: seraphc2-service
+                port:
+                  number: 80
+          - path: /socket.io
+            pathType: Prefix
+            backend:
+              service:
+                name: seraphc2-service
+                port:
+                  number: 80
+    - host: www.yourdomain.com # Change this to your domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: seraphc2-service
+                port:
+                  number: 80
+
+---
+# Separate ingress for metrics (internal access only)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: seraphc2-metrics-ingress
+  namespace: seraphc2
+  labels:
+    app.kubernetes.io/name: seraphc2
+    app.kubernetes.io/component: metrics-ingress
+    app.kubernetes.io/part-of: seraphc2
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: 'true'
+
+    # Restrict access to internal networks only
+    nginx.ingress.kubernetes.io/whitelist-source-range: '10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'
+
+    # Basic auth for metrics (optional)
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: seraphc2-metrics-auth
+    nginx.ingress.kubernetes.io/auth-realm: 'SeraphC2 Metrics'
+
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - metrics.yourdomain.com # Change this to your metrics domain
+      secretName: seraphc2-metrics-tls
+  rules:
+    - host: metrics.yourdomain.com # Change this to your metrics domain
+      http:
+        paths:
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: seraphc2-service
+                port:
+                  number: 9090

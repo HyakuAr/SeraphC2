@@ -1,0 +1,512 @@
+name: Release Automation
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  validate-release:
+    name: Validate Release
+    runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is-prerelease: ${{ steps.version.outputs.is-prerelease }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch full history for changelog generation
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            IS_PRERELEASE="${{ github.event.inputs.prerelease }}"
+          else
+            # Extract version from tag (remove 'v' prefix)
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            # Check if it's a prerelease (contains alpha, beta, rc)
+            if [[ "$VERSION" =~ (alpha|beta|rc) ]]; then
+              IS_PRERELEASE="true"
+            else
+              IS_PRERELEASE="false"
+            fi
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "is-prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
+          echo "Is prerelease: $IS_PRERELEASE"
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(\.[0-9]+)?)?$ ]]; then
+            echo "❌ Invalid version format: $VERSION"
+            echo "Expected format: X.Y.Z or X.Y.Z-prerelease"
+            exit 1
+          fi
+          echo "✅ Version format is valid: $VERSION"
+
+  run-tests:
+    name: Run Full Test Suite
+    runs-on: ubuntu-latest
+    needs: validate-release
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: test_user
+          POSTGRES_DB: seraphc2_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: npm run lint
+
+      - name: Run formatting check
+        run: npm run format:check
+
+      - name: Build backend
+        run: npm run build
+
+      - name: Run unit tests
+        run: npm run test:coverage
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/seraphc2_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test_jwt_secret_key_for_ci
+          ENCRYPTION_KEY: test_encryption_key_32_chars_long
+
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/seraphc2_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test_jwt_secret_key_for_ci
+          ENCRYPTION_KEY: test_encryption_key_32_chars_long
+          RUN_INTEGRATION_TESTS: true
+
+      - name: Install frontend dependencies
+        run: npm run install:web
+
+      - name: Build frontend
+        run: npm run build:web
+
+      - name: Run frontend tests
+        run: npm run test:web
+
+  generate-changelog:
+    name: Generate Changelog
+    runs-on: ubuntu-latest
+    needs: [validate-release, run-tests]
+
+    outputs:
+      changelog: ${{ steps.changelog.outputs.changelog }}
+      release-notes: ${{ steps.release-notes.outputs.notes }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          VERSION="${{ needs.validate-release.outputs.version }}"
+
+          # Get the previous tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "No previous tag found, generating changelog from first commit"
+            COMMIT_RANGE=""
+          else
+            echo "Previous tag: $PREVIOUS_TAG"
+            COMMIT_RANGE="$PREVIOUS_TAG..HEAD"
+          fi
+
+          # Generate changelog content
+          cat > CHANGELOG_TEMP.md << 'EOF'
+          # Changelog
+
+          All notable changes to this project will be documented in this file.
+
+          The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+          and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+          EOF
+
+          # Add current version section
+          echo "## [$VERSION] - $(date +%Y-%m-%d)" >> CHANGELOG_TEMP.md
+          echo "" >> CHANGELOG_TEMP.md
+
+          # Categorize commits
+          echo "### Added" >> CHANGELOG_TEMP.md
+          git log $COMMIT_RANGE --pretty=format:"- %s" --grep="^feat" --grep="^add" | head -20 >> CHANGELOG_TEMP.md || true
+          echo "" >> CHANGELOG_TEMP.md
+
+          echo "### Changed" >> CHANGELOG_TEMP.md
+          git log $COMMIT_RANGE --pretty=format:"- %s" --grep="^change" --grep="^update" --grep="^refactor" | head -20 >> CHANGELOG_TEMP.md || true
+          echo "" >> CHANGELOG_TEMP.md
+
+          echo "### Fixed" >> CHANGELOG_TEMP.md
+          git log $COMMIT_RANGE --pretty=format:"- %s" --grep="^fix" --grep="^bug" | head -20 >> CHANGELOG_TEMP.md || true
+          echo "" >> CHANGELOG_TEMP.md
+
+          echo "### Security" >> CHANGELOG_TEMP.md
+          git log $COMMIT_RANGE --pretty=format:"- %s" --grep="^security" --grep="^sec" | head -10 >> CHANGELOG_TEMP.md || true
+          echo "" >> CHANGELOG_TEMP.md
+
+          # If no categorized commits found, add all commits
+          COMMIT_COUNT=$(git log $COMMIT_RANGE --oneline | wc -l)
+          if [ "$COMMIT_COUNT" -gt 0 ]; then
+            echo "### All Changes" >> CHANGELOG_TEMP.md
+            git log $COMMIT_RANGE --pretty=format:"- %s (%h)" --reverse | head -50 >> CHANGELOG_TEMP.md
+            echo "" >> CHANGELOG_TEMP.md
+          fi
+
+          # Save changelog content
+          CHANGELOG_CONTENT=$(cat CHANGELOG_TEMP.md)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Generate release notes
+        id: release-notes
+        run: |
+          VERSION="${{ needs.validate-release.outputs.version }}"
+          IS_PRERELEASE="${{ needs.validate-release.outputs.is-prerelease }}"
+
+          # Create release notes
+          cat > RELEASE_NOTES.md << EOF
+          # SeraphC2 Release $VERSION
+
+          $(if [ "$IS_PRERELEASE" = "true" ]; then echo "⚠️ **This is a pre-release version**"; fi)
+
+          ## What's New
+
+          This release includes the following changes:
+
+          EOF
+
+          # Get recent commits for release notes
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREVIOUS_TAG" ]; then
+            COMMIT_RANGE="$PREVIOUS_TAG..HEAD"
+          else
+            COMMIT_RANGE=""
+          fi
+
+          # Add key changes
+          echo "### Key Changes" >> RELEASE_NOTES.md
+          git log $COMMIT_RANGE --pretty=format:"- %s" --grep="^feat" --grep="^fix" --grep="^security" | head -10 >> RELEASE_NOTES.md || true
+          echo "" >> RELEASE_NOTES.md
+
+          # Add installation instructions
+          cat >> RELEASE_NOTES.md << 'EOF'
+
+          ## Installation
+
+          ### Docker (Recommended)
+          ```bash
+          docker pull ghcr.io/seraphc2/seraphc2:$VERSION
+          ```
+
+          ### From Source
+          ```bash
+          git clone https://github.com/YourOrg/SeraphC2.git
+          cd SeraphC2
+          git checkout v$VERSION
+          npm install
+          npm run build
+          ```
+
+          ## Security Notes
+
+          - This is a security research tool intended for authorized testing only
+          - Ensure you have proper authorization before using this tool
+          - Review the SECURITY.md file for vulnerability reporting procedures
+
+          ## Documentation
+
+          - [Installation Guide](docs/installation/)
+          - [Configuration Guide](docs/configuration/)
+          - [API Documentation](docs/api/)
+
+          ## Support
+
+          If you encounter any issues, please check our [troubleshooting guide](docs/troubleshooting/) or create an issue on GitHub.
+          EOF
+
+          # Replace $VERSION placeholder
+          sed -i "s/\$VERSION/$VERSION/g" RELEASE_NOTES.md
+
+          RELEASE_NOTES_CONTENT=$(cat RELEASE_NOTES.md)
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$RELEASE_NOTES_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+  build-artifacts:
+    name: Build Release Artifacts
+    runs-on: ubuntu-latest
+    needs: [validate-release, run-tests]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: npm run build
+
+      - name: Install frontend dependencies
+        run: npm run install:web
+
+      - name: Build frontend
+        run: npm run build:web
+
+      - name: Create release package
+        run: |
+          VERSION="${{ needs.validate-release.outputs.version }}"
+
+          # Create release directory
+          mkdir -p release/seraphc2-$VERSION
+
+          # Copy built files
+          cp -r dist release/seraphc2-$VERSION/
+          cp -r web-client/build release/seraphc2-$VERSION/web-client/
+
+          # Copy essential files
+          cp package.json release/seraphc2-$VERSION/
+          cp package-lock.json release/seraphc2-$VERSION/
+          cp README.md release/seraphc2-$VERSION/
+          cp LICENSE release/seraphc2-$VERSION/
+          cp SECURITY.md release/seraphc2-$VERSION/
+          cp DISCLAIMER.md release/seraphc2-$VERSION/
+
+          # Copy configuration files
+          cp .env.example release/seraphc2-$VERSION/
+          cp docker-compose.yml release/seraphc2-$VERSION/
+
+          # Copy documentation
+          cp -r docs release/seraphc2-$VERSION/ 2>/dev/null || true
+
+          # Create production package.json
+          cd release/seraphc2-$VERSION
+          npm ci --only=production
+
+          # Create tarball
+          cd ..
+          tar -czf seraphc2-$VERSION.tar.gz seraphc2-$VERSION/
+
+          # Create zip file
+          zip -r seraphc2-$VERSION.zip seraphc2-$VERSION/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: |
+            release/*.tar.gz
+            release/*.zip
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate-release, generate-changelog, build-artifacts]
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: ./artifacts
+
+      - name: Create GitHub Release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const version = '${{ needs.validate-release.outputs.version }}';
+            const isPrerelease = '${{ needs.validate-release.outputs.is-prerelease }}' === 'true';
+            const releaseNotes = `${{ needs.generate-changelog.outputs.release-notes }}`;
+
+            // Create the release
+            const release = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: `v${version}`,
+              name: `SeraphC2 v${version}`,
+              body: releaseNotes,
+              draft: false,
+              prerelease: isPrerelease,
+              generate_release_notes: false
+            });
+
+            console.log(`Created release: ${release.data.html_url}`);
+
+            // Upload artifacts
+            const artifactsDir = './artifacts';
+            const files = fs.readdirSync(artifactsDir);
+
+            for (const file of files) {
+              if (file.endsWith('.tar.gz') || file.endsWith('.zip')) {
+                const filePath = path.join(artifactsDir, file);
+                const fileContent = fs.readFileSync(filePath);
+                
+                await github.rest.repos.uploadReleaseAsset({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  release_id: release.data.id,
+                  name: file,
+                  data: fileContent
+                });
+                
+                console.log(`Uploaded artifact: ${file}`);
+              }
+            }
+
+  update-changelog:
+    name: Update Repository Changelog
+    runs-on: ubuntu-latest
+    needs: [validate-release, generate-changelog, create-release]
+    if: github.event_name == 'push' # Only update on tag push, not manual dispatch
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update CHANGELOG.md
+        run: |
+          # Create or update CHANGELOG.md
+          if [ ! -f CHANGELOG.md ]; then
+            echo "Creating new CHANGELOG.md"
+            cat > CHANGELOG.md << 'EOF'
+          # Changelog
+
+          All notable changes to this project will be documented in this file.
+
+          The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+          and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+          EOF
+          fi
+
+          # Prepare new changelog entry
+          VERSION="${{ needs.validate-release.outputs.version }}"
+          TEMP_CHANGELOG=$(mktemp)
+
+          # Add new version entry at the top
+          head -n 6 CHANGELOG.md > $TEMP_CHANGELOG
+          echo "" >> $TEMP_CHANGELOG
+          echo "## [$VERSION] - $(date +%Y-%m-%d)" >> $TEMP_CHANGELOG
+
+          # Add changes from this release
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREVIOUS_TAG" ]; then
+            COMMIT_RANGE="$PREVIOUS_TAG..HEAD"
+          else
+            COMMIT_RANGE=""
+          fi
+
+          echo "" >> $TEMP_CHANGELOG
+          echo "### Added" >> $TEMP_CHANGELOG
+          git log $COMMIT_RANGE --pretty=format:"- %s" --grep="^feat" --grep="^add" | head -10 >> $TEMP_CHANGELOG || true
+          echo "" >> $TEMP_CHANGELOG
+
+          echo "### Fixed" >> $TEMP_CHANGELOG
+          git log $COMMIT_RANGE --pretty=format:"- %s" --grep="^fix" --grep="^bug" | head -10 >> $TEMP_CHANGELOG || true
+          echo "" >> $TEMP_CHANGELOG
+
+          echo "### Security" >> $TEMP_CHANGELOG
+          git log $COMMIT_RANGE --pretty=format:"- %s" --grep="^security" --grep="^sec" | head -5 >> $TEMP_CHANGELOG || true
+          echo "" >> $TEMP_CHANGELOG
+
+          # Append existing changelog content (skip header)
+          tail -n +7 CHANGELOG.md >> $TEMP_CHANGELOG
+
+          # Replace original file
+          mv $TEMP_CHANGELOG CHANGELOG.md
+
+      - name: Commit changelog update
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add CHANGELOG.md
+          git commit -m "chore: update CHANGELOG.md for v${{ needs.validate-release.outputs.version }}" || exit 0
+          git push

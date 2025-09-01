@@ -1,0 +1,92 @@
+1. Get the application URL by running these commands:
+{{- if .Values.ingress.enabled }}
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "seraphc2.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+           You can watch the status of by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "seraphc2.fullname" . }}'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "seraphc2.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.ports.http }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "{{ include "seraphc2.selectorLabels" . }},app.kubernetes.io/component=application" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:$CONTAINER_PORT
+{{- end }}
+
+2. Check the status of your deployment:
+   kubectl get pods -n {{ .Release.Namespace }} -l "{{ include "seraphc2.selectorLabels" . }}"
+
+3. View application logs:
+   kubectl logs -n {{ .Release.Namespace }} -l "{{ include "seraphc2.selectorLabels" . }},app.kubernetes.io/component=application" -f
+
+4. Access metrics (if enabled):
+{{- if .Values.metricsIngress.enabled }}
+{{- range $host := .Values.metricsIngress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.metricsIngress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else }}
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "seraphc2.fullname" . }} 9090:{{ .Values.service.ports.metrics }}
+   Then visit: http://localhost:9090/metrics
+{{- end }}
+
+5. Database connection (if using built-in PostgreSQL):
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "seraphc2.postgresql.fullname" . }} 5432:5432
+   Connection string: postgresql://{{ .Values.postgresql.auth.username }}:PASSWORD@localhost:5432/{{ .Values.postgresql.auth.database }}
+
+6. Redis connection (if using built-in Redis):
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "seraphc2.redis.fullname" . }}-master 6379:6379
+   Connection: redis://localhost:6379
+
+{{- if not .Values.ingress.enabled }}
+
+WARNING: Ingress is disabled. To enable external access, either:
+- Enable ingress by setting ingress.enabled=true
+- Use port-forwarding: kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "seraphc2.fullname" . }} 8080:{{ .Values.service.ports.http }}
+{{- end }}
+
+{{- $secretsToChange := list }}
+{{- if eq .Values.secrets.dbPassword "change_me_strong_password" }}
+{{- $secretsToChange = append $secretsToChange "DB_PASSWORD" }}
+{{- end }}
+{{- if eq .Values.secrets.redisPassword "change_me_redis_password" }}
+{{- $secretsToChange = append $secretsToChange "REDIS_PASSWORD" }}
+{{- end }}
+{{- if eq .Values.secrets.jwtSecret "change_me_very_long_random_jwt_secret_at_least_64_characters_for_security" }}
+{{- $secretsToChange = append $secretsToChange "JWT_SECRET" }}
+{{- end }}
+{{- if eq .Values.secrets.encryptionKey "change_me_32_character_key" }}
+{{- $secretsToChange = append $secretsToChange "ENCRYPTION_KEY" }}
+{{- end }}
+
+{{- if $secretsToChange }}
+
+⚠️  SECURITY WARNING: Default secrets detected!
+Please change the following secrets in your values.yaml before production use:
+{{- range $secretsToChange }}
+- {{ . }}
+{{- end }}
+
+Generate secure secrets with:
+  openssl rand -base64 32  # For passwords
+  openssl rand -base64 64  # For JWT secret
+  openssl rand -base64 24  # For encryption key (32 chars)
+{{- end }}
+
+{{- if and .Values.ingress.enabled (not .Values.ingress.tls) }}
+
+⚠️  TLS WARNING: Ingress is enabled but TLS is not configured.
+For production use, enable TLS by configuring ingress.tls in your values.yaml
+{{- end }}
+
+For more information and troubleshooting, visit:
+https://github.com/your-org/seraphc2/tree/main/docs/deployment

@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: seraphc2-service-account
+  namespace: seraphc2
+  labels:
+    app.kubernetes.io/name: seraphc2
+    app.kubernetes.io/component: service-account
+    app.kubernetes.io/part-of: seraphc2
+automountServiceAccountToken: false
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: seraphc2-role
+  namespace: seraphc2
+  labels:
+    app.kubernetes.io/name: seraphc2
+    app.kubernetes.io/component: role
+    app.kubernetes.io/part-of: seraphc2
+rules:
+  - apiGroups: ['']
+    resources: ['configmaps', 'secrets']
+    verbs: ['get', 'list']
+  - apiGroups: ['']
+    resources: ['pods']
+    verbs: ['get', 'list']
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: seraphc2-role-binding
+  namespace: seraphc2
+  labels:
+    app.kubernetes.io/name: seraphc2
+    app.kubernetes.io/component: role-binding
+    app.kubernetes.io/part-of: seraphc2
+subjects:
+  - kind: ServiceAccount
+    name: seraphc2-service-account
+    namespace: seraphc2
+roleRef:
+  kind: Role
+  name: seraphc2-role
+  apiGroup: rbac.authorization.k8s.io

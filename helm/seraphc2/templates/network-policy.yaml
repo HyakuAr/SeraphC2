@@ -1,0 +1,169 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "seraphc2.fullname" . }}
+  labels:
+    {{- include "seraphc2.labels" . | nindent 4 }}
+    app.kubernetes.io/component: network-policy
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "seraphc2.selectorLabels" . | nindent 6 }}
+  policyTypes:
+  {{- if .Values.networkPolicy.ingress.enabled }}
+  - Ingress
+  {{- end }}
+  {{- if .Values.networkPolicy.egress.enabled }}
+  - Egress
+  {{- end }}
+  {{- if .Values.networkPolicy.ingress.enabled }}
+  ingress:
+  # Allow ingress from nginx ingress controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: {{ .Values.config.port }}
+    - protocol: TCP
+      port: {{ .Values.config.httpsPort }}
+  # Allow ingress from monitoring namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: {{ .Values.config.metricsPort }}
+  # Allow internal communication within namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: {{ .Release.Namespace }}
+    - podSelector: {}
+  {{- with .Values.networkPolicy.ingress.namespaceSelector }}
+  - from:
+    - namespaceSelector:
+        {{- toYaml . | nindent 8 }}
+  {{- end }}
+  {{- with .Values.networkPolicy.ingress.podSelector }}
+  - from:
+    - podSelector:
+        {{- toYaml . | nindent 8 }}
+  {{- end }}
+  {{- end }}
+  {{- if .Values.networkPolicy.egress.enabled }}
+  egress:
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow HTTPS outbound (for external APIs, updates, etc.)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow HTTP outbound (for health checks, etc.)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 80
+  # Allow internal communication within namespace
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: {{ .Release.Namespace }}
+    - podSelector: {}
+  {{- end }}
+
+{{- if .Values.postgresql.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "seraphc2.postgresql.fullname" . }}
+  labels:
+    {{- include "seraphc2.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database-network-policy
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "seraphc2.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: database
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Only allow connections from SeraphC2 application pods
+  - from:
+    - podSelector:
+        matchLabels:
+          {{- include "seraphc2.selectorLabels" . | nindent 10 }}
+          app.kubernetes.io/component: application
+    ports:
+    - protocol: TCP
+      port: 5432
+  egress:
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+{{- end }}
+
+{{- if .Values.redis.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "seraphc2.redis.fullname" . }}
+  labels:
+    {{- include "seraphc2.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cache-network-policy
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "seraphc2.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: cache
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Only allow connections from SeraphC2 application pods
+  - from:
+    - podSelector:
+        matchLabels:
+          {{- include "seraphc2.selectorLabels" . | nindent 10 }}
+          app.kubernetes.io/component: application
+    ports:
+    - protocol: TCP
+      port: 6379
+  egress:
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+{{- end }}
+{{- end }}

@@ -1,0 +1,197 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database - Production Configuration
+  postgres:
+    image: postgres:15-alpine
+    container_name: seraphc2-postgres-prod
+    environment:
+      POSTGRES_DB: ${DB_NAME:-seraphc2}
+      POSTGRES_USER: ${DB_USER:-seraphc2}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_INITDB_ARGS: '--encoding=UTF-8 --locale=C'
+    ports:
+      - '127.0.0.1:5432:5432' # Bind to localhost only for security
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./docker/database/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - seraphc2-network-prod
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-seraphc2} -d ${DB_NAME:-seraphc2}']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
+  # Redis Cache - Production Configuration
+  redis:
+    image: redis:7-alpine
+    container_name: seraphc2-redis-prod
+    ports:
+      - '127.0.0.1:6379:6379' # Bind to localhost only for security
+    volumes:
+      - redis_data_prod:/data
+      - ./docker/redis/redis.prod.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - seraphc2-network-prod
+    restart: unless-stopped
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD}
+    healthcheck:
+      test: ['CMD', 'redis-cli', '--no-auth-warning', '-a', '${REDIS_PASSWORD}', 'ping']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.25'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+
+  # SeraphC2 Server - Production Configuration
+  seraphc2-server:
+    build:
+      context: .
+      dockerfile: docker/server/Dockerfile.prod
+    container_name: seraphc2-server-prod
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-3000}
+      HOST: ${HOST:-0.0.0.0}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-seraphc2}
+      DB_USER: ${DB_USER:-seraphc2}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_SSL: ${DB_SSL:-false}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
+      SESSION_TIMEOUT: ${SESSION_TIMEOUT:-3600}
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-10485760}
+      ENABLE_METRICS: ${ENABLE_METRICS:-true}
+      METRICS_PORT: ${METRICS_PORT:-9090}
+    ports:
+      - '${PORT:-3000}:${PORT:-3000}'
+      - '${HTTPS_PORT:-8443}:8443'
+      - '${METRICS_PORT:-9090}:${METRICS_PORT:-9090}'
+    volumes:
+      - ./logs:/app/logs
+      - seraphc2_uploads:/app/uploads
+    networks:
+      - seraphc2-network-prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/logs
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'wget --no-verbose --tries=1 --spider http://localhost:${PORT:-3000}/health || exit 1',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Nginx Reverse Proxy - Production Configuration
+  nginx:
+    image: nginx:alpine
+    container_name: seraphc2-nginx-prod
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./docker/nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_cache:/var/cache/nginx
+      - nginx_logs:/var/log/nginx
+    networks:
+      - seraphc2-network-prod
+    depends_on:
+      seraphc2-server:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data_prod:
+    driver: local
+  redis_data_prod:
+    driver: local
+  seraphc2_uploads:
+    driver: local
+  nginx_cache:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  seraphc2-network-prod:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+    driver_opts:
+      com.docker.network.bridge.name: seraphc2-prod

@@ -1,0 +1,139 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: seraphc2-network-policy
+  namespace: seraphc2
+  labels:
+    app.kubernetes.io/name: seraphc2
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: seraphc2
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: seraphc2
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow ingress from nginx ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 8443
+    # Allow ingress from monitoring namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9090
+    # Allow internal communication within namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: seraphc2
+        - podSelector: {}
+  egress:
+    # Allow DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow HTTPS outbound (for external APIs, updates, etc.)
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    # Allow HTTP outbound (for health checks, etc.)
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 80
+    # Allow internal communication within namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: seraphc2
+        - podSelector: {}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-network-policy
+  namespace: seraphc2
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: seraphc2
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+      app.kubernetes.io/component: database
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only allow connections from SeraphC2 application pods
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: seraphc2
+              app.kubernetes.io/component: application
+      ports:
+        - protocol: TCP
+          port: 5432
+  egress:
+    # Allow DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-network-policy
+  namespace: seraphc2
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: seraphc2
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/component: cache
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only allow connections from SeraphC2 application pods
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: seraphc2
+              app.kubernetes.io/component: application
+      ports:
+        - protocol: TCP
+          port: 6379
+  egress:
+    # Allow DNS resolution
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
