@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Set locale to ensure consistent command output regardless of system language
+export LC_ALL=C
+export LANG=C
+
 #==============================================================================
 # SeraphC2 Automated Setup Script
 # Version: 1.0.0
@@ -3308,7 +3312,7 @@ validate_network_security() {
     
     # Check if firewall is active
     local firewall_active=false
-    if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
+    if command -v ufw >/dev/null 2>&1 && systemctl is-active --quiet ufw 2>/dev/null; then
         firewall_active=true
         log_verbose "UFW firewall is active"
     elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
@@ -4744,7 +4748,7 @@ update_nodejs_component() {
     # For now, we'll just check if updates are available through the package manager
     case "${SYSTEM_INFO[package_manager]}" in
         "apt")
-            if apt list --upgradable 2>/dev/null | grep -q nodejs; then
+            if apt list --upgradable 2>/dev/null | grep -q "^nodejs/"; then
                 log_info "Node.js updates available, updating..."
                 if apt-get install -y nodejs npm; then
                     return 0
@@ -4785,7 +4789,7 @@ update_postgresql_component() {
     # For now, we'll just check if updates are available through the package manager
     case "${SYSTEM_INFO[package_manager]}" in
         "apt")
-            if apt list --upgradable 2>/dev/null | grep -q postgresql; then
+            if apt list --upgradable 2>/dev/null | grep -q "^postgresql"; then
                 log_info "PostgreSQL updates available, updating..."
                 if apt-get install -y postgresql postgresql-contrib; then
                     return 0
@@ -4826,7 +4830,7 @@ update_redis_component() {
     # For now, we'll just check if updates are available through the package manager
     case "${SYSTEM_INFO[package_manager]}" in
         "apt")
-            if apt list --upgradable 2>/dev/null | grep -q redis; then
+            if apt list --upgradable 2>/dev/null | grep -q "^redis"; then
                 log_info "Redis updates available, updating..."
                 if apt-get install -y redis-server; then
                     return 0
@@ -6488,9 +6492,8 @@ configure_ufw_firewall() {
         return $E_FIREWALL_ERROR
     fi
     
-    # Verify UFW status
-    local final_status=$(ufw status 2>/dev/null | head -1 | awk '{print $2}')
-    if [[ "$final_status" != "active" ]]; then
+    # Verify UFW status using systemctl (language-agnostic)
+    if ! systemctl is-active --quiet ufw 2>/dev/null; then
         log_error "UFW firewall is not active after configuration"
         log_error "UFW status output: $(ufw status 2>&1)"
         return $E_FIREWALL_ERROR
@@ -6749,8 +6752,8 @@ test_firewall_configuration() {
 test_ufw_configuration() {
     log_debug "Testing UFW configuration..."
     
-    # Check if UFW is active
-    if ! ufw status | grep -q "Status: active"; then
+    # Check if UFW is active using systemctl (language-agnostic)
+    if ! systemctl is-active --quiet ufw 2>/dev/null; then
         log_error "UFW is not active"
         return 1
     fi
