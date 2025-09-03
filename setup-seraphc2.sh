@@ -10763,6 +10763,149 @@ check_postgresql_version_requirements() {
     fi
 }
 
+# Recover from PostgreSQL installation failures
+recover_postgresql_installation() {
+    log_info "Starting PostgreSQL installation recovery process..."
+    
+    local os_type="${SYSTEM_INFO[os_type]}"
+    local package_manager="${SYSTEM_INFO[package_manager]}"
+    
+    # Only support recovery for apt-based systems for now
+    if [[ "$package_manager" != "apt" ]]; then
+        log_error "PostgreSQL installation recovery is only supported on apt-based systems"
+        return $E_PACKAGE_INSTALL_FAILED
+    fi
+    
+    log_info "Step 1: Cleaning up problematic repository configurations..."
+    
+    # Remove any existing PostgreSQL repository files
+    if [[ -f /etc/apt/sources.list.d/pgdg.list ]]; then
+        log_info "Removing existing PostgreSQL repository file..."
+        rm -f /etc/apt/sources.list.d/pgdg.list || true
+    fi
+    
+    # Remove old GPG keys
+    if [[ -f /usr/share/keyrings/postgresql-archive-keyring.gpg ]]; then
+        log_info "Removing existing PostgreSQL GPG keyring..."
+        rm -f /usr/share/keyrings/postgresql-archive-keyring.gpg || true
+    fi
+    
+    # Clean up any old apt-key entries (deprecated method)
+    if apt-key list 2>/dev/null | grep -qi postgresql; then
+        log_info "Removing old PostgreSQL GPG keys from apt-key..."
+        apt-key del ACCC4CF8 2>/dev/null || true
+    fi
+    
+    log_info "Step 2: Updating package cache after cleanup..."
+    if ! update_package_cache; then
+        log_warning "Failed to update package cache after cleanup"
+    fi
+    
+    log_info "Step 3: Installing required dependencies..."
+    if ! install_package "wget" "gnupg" "lsb-release"; then
+        log_error "Failed to install required dependencies for PostgreSQL recovery"
+        return $E_PACKAGE_INSTALL_FAILED
+    fi
+    
+    log_info "Step 4: Re-adding PostgreSQL repository with modern configuration..."
+    
+    # Create keyrings directory
+    mkdir -p /usr/share/keyrings || true
+    
+    # Download and add PostgreSQL GPG key using modern method
+    local gpg_key_success=false
+    if wget --quiet --timeout=30 -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-archive-keyring.gpg 2>/dev/null; then
+        gpg_key_success=true
+        log_success "PostgreSQL GPG key added successfully"
+    else
+        log_warning "Failed to download PostgreSQL GPG key, will use system packages only"
+    fi
+    
+    if [[ "$gpg_key_success" == "true" ]]; then
+        # Detect codename with enhanced fallback logic
+        local codename="${SYSTEM_INFO[os_codename]}"
+        local os_version="${SYSTEM_INFO[os_version]}"
+        
+        # Enhanced codename detection with fallbacks
+        if [[ -z "$codename" ]] || [[ "$codename" == "n/a" ]]; then
+            log_info "Codename not detected, using version-based mapping..."
+            case "$os_version" in
+                "22.04"|"22."*) codename="jammy" ;;
+                "20.04"|"20."*) codename="focal" ;;
+                "18.04"|"18."*) codename="bionic" ;;
+                "24.04"|"24."*) codename="jammy" ;;  # Use jammy for newer versions
+                *) 
+                    log_warning "Unknown Ubuntu version: $os_version, using focal as fallback"
+                    codename="focal"
+                    ;;
+            esac
+        fi
+        
+        # Validate codename is supported
+        case "$codename" in
+            "jammy"|"focal"|"bionic"|"xenial")
+                log_info "Using PostgreSQL repository for codename: $codename"
+                ;;
+            *)
+                log_warning "Unsupported codename: $codename, falling back to focal"
+                codename="focal"
+                ;;
+        esac
+        
+        # Add repository with signed-by option
+        local repo_line="deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt/ $codename-pgdg main"
+        echo "$repo_line" > /etc/apt/sources.list.d/pgdg.list
+        
+        log_info "Step 5: Updating package cache with new repository..."
+        if update_package_cache; then
+            log_success "PostgreSQL repository added successfully"
+            
+            # Validate that PostgreSQL packages are available
+            if apt-cache search postgresql-15 2>/dev/null | grep -q "postgresql-15 "; then
+                log_info "PostgreSQL 15 is available in repository"
+            elif apt-cache search postgresql-14 2>/dev/null | grep -q "postgresql-14 "; then
+                log_info "PostgreSQL 14 is available in repository"
+            else
+                log_warning "Specific PostgreSQL versions not available, will use system packages"
+            fi
+        else
+            log_warning "Failed to update package cache with PostgreSQL repository"
+            log_info "Removing problematic repository and falling back to system packages..."
+            rm -f /etc/apt/sources.list.d/pgdg.list || true
+            rm -f /usr/share/keyrings/postgresql-archive-keyring.gpg || true
+            update_package_cache || true
+        fi
+    fi
+    
+    log_info "Step 6: Attempting PostgreSQL installation with recovery settings..."
+    
+    # Try installation again with the cleaned up environment
+    if install_postgresql; then
+        log_success "PostgreSQL installation successful after recovery"
+        return 0
+    else
+        log_warning "Standard installation still failed, trying system packages only..."
+        
+        # Final attempt with just system packages
+        local system_packages=("postgresql" "postgresql-client" "postgresql-contrib")
+        
+        log_info "Installing system PostgreSQL packages: ${system_packages[*]}"
+        if install_package_array system_packages[@]; then
+            log_success "System PostgreSQL packages installed successfully"
+            
+            # Track installed packages
+            for package in "${system_packages[@]}"; do
+                track_install_state "packages_installed" "$package"
+            done
+            
+            return 0
+        else
+            log_error "Failed to install even system PostgreSQL packages"
+            return $E_PACKAGE_INSTALL_FAILED
+        fi
+    fi
+}
+
 # Install PostgreSQL for different distributions
 install_postgresql() {
     log_info "Installing PostgreSQL database server..."
@@ -10900,6 +11043,8 @@ install_postgresql() {
     
     if [[ "$installation_successful" != "true" ]]; then
         log_error "Failed to install any PostgreSQL packages"
+        log_info "This may be due to repository issues, package conflicts, or network problems"
+        log_info "The setup script will attempt automatic recovery..."
         return $E_PACKAGE_INSTALL_FAILED
     fi
     
@@ -11906,8 +12051,11 @@ setup_postgresql_database() {
     
     # Step 1: Install PostgreSQL
     if ! install_postgresql; then
-        log_error "PostgreSQL installation failed"
-        return $E_DATABASE_ERROR
+        log_warning "PostgreSQL installation failed, attempting automatic recovery..."
+        if ! recover_postgresql_installation; then
+            log_error "PostgreSQL installation failed even after recovery attempt"
+            return $E_DATABASE_ERROR
+        fi
     fi
     
     # Step 2: Initialize database cluster (if needed)

@@ -85,6 +85,17 @@ Run the test script to verify the fixes:
 sudo ./test-postgresql-fix.sh
 ```
 
+## Quick Fix for Installation Issues
+
+If you're experiencing PostgreSQL installation failures during SeraphC2 setup, use our dedicated fix script:
+
+```bash
+# Run the PostgreSQL installation fix
+sudo ./postgresql-installation-fix.sh
+```
+
+For detailed troubleshooting steps, see: [POSTGRESQL_INSTALLATION_TROUBLESHOOTING.md](POSTGRESQL_INSTALLATION_TROUBLESHOOTING.md)
+
 ## Compatibility
 
 These fixes ensure compatibility with:
