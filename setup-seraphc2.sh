@@ -8977,7 +8977,7 @@ add_repository() {
                 nodesource)
                     # Add NodeSource repository for Node.js
                     log_info "Adding NodeSource repository for Node.js..."
-                    if ! curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; then
+                    if ! curl -fsSL https://deb.nodesource.com/setup_22.x | bash -; then
                         log_error "Failed to add NodeSource repository"
                         return $E_PACKAGE_INSTALL_FAILED
                     fi
@@ -9185,7 +9185,7 @@ add_repository() {
                 nodesource)
                     # Add NodeSource repository for Node.js
                     log_info "Adding NodeSource repository for Node.js..."
-                    if ! curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -; then
+                    if ! curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -; then
                         log_error "Failed to add NodeSource repository"
                         return $E_PACKAGE_INSTALL_FAILED
                     fi
@@ -9466,7 +9466,7 @@ validate_nodejs_version() {
 # Setup NodeSource repository for latest Node.js versions with enhanced error handling
 setup_nodesource_repository() {
     local os_type="${SYSTEM_INFO[os_type]}"
-    local nodejs_version="20"  # LTS version - required for dependencies
+    local nodejs_version="22"  # Latest LTS version - required for dependencies
     
     log_info "Setting up NodeSource repository for Node.js $nodejs_version..."
     
@@ -9656,55 +9656,26 @@ install_nodejs() {
             return 0
         else
             log_warning "Node.js $NODEJS_CURRENT_VERSION is installed but does not meet minimum requirements (need >= 20)"
-            log_info "Removing old Node.js installation and installing Node.js 20..."
+            log_info "Removing old Node.js installation and installing Node.js 22..."
             if ! remove_old_nodejs_installation; then
                 log_error "Failed to remove old Node.js installation"
                 return $E_PACKAGE_INSTALL_FAILED
             fi
         fi
     else
-        log_info "Node.js not found, installing latest LTS version..."
+        log_info "Node.js not found, installing Node.js 22..."
     fi
     
-    # Try multiple installation methods until one succeeds
-    local installation_methods=("nodesource_primary" "nodesource_alternative" "snap" "binary_direct")
-    local method_success=false
+    # Install Node.js 22.x using the provided commands
+    log_info "Setting up NodeSource repository for Node.js 22..."
+    if ! curl -fsSL https://deb.nodesource.com/setup_22.x | bash -; then
+        log_error "Failed to setup NodeSource repository for Node.js 22"
+        return $E_PACKAGE_INSTALL_FAILED
+    fi
     
-    for method in "${installation_methods[@]}"; do
-        log_info "Attempting Node.js installation via: $method"
-        
-        case "$method" in
-            "nodesource_primary")
-                if install_nodejs_nodesource_primary; then
-                    method_success=true
-                    break
-                fi
-                ;;
-            "nodesource_alternative")
-                if install_nodejs_nodesource_alternative; then
-                    method_success=true
-                    break
-                fi
-                ;;
-            "snap")
-                if install_nodejs_snap; then
-                    method_success=true
-                    break
-                fi
-                ;;
-            "binary_direct")
-                if install_nodejs_binary_direct; then
-                    method_success=true
-                    break
-                fi
-                ;;
-        esac
-        
-        log_warning "Installation method '$method' failed, trying next method..."
-    done
-    
-    if [[ "$method_success" != "true" ]]; then
-        log_error "All Node.js installation methods failed"
+    log_info "Installing Node.js via apt-get..."
+    if ! apt-get install -y nodejs; then
+        log_error "Failed to install Node.js via apt-get"
         return $E_PACKAGE_INSTALL_FAILED
     fi
     
@@ -9762,7 +9733,7 @@ install_nodejs_nodesource_alternative() {
             curl -fsSL https://deb.nodesource.com/gpgkey/nodesource.gpg.key | gpg --dearmor | tee /usr/share/keyrings/nodesource.gpg >/dev/null 2>&1
             
             # Add repository with explicit configuration
-            echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
+            echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
             
             # Update package cache with retries
             local retry_count=0
@@ -9823,7 +9794,7 @@ install_nodejs_snap() {
 install_nodejs_binary_direct() {
     log_info "Attempting direct binary installation..."
     
-    local nodejs_version="20.17.0"  # Latest LTS version
+    local nodejs_version="22.12.0"  # Latest LTS version
     local arch="${SYSTEM_INFO[architecture]}"
     local node_arch=""
     
@@ -19243,7 +19214,7 @@ generate_dockerfile() {
     
     cat > "$dockerfile" <<'EOF'
 # SeraphC2 Docker Image
-FROM node:20-alpine
+FROM node:22-alpine
 
 # Set working directory
 WORKDIR /opt/seraphc2
