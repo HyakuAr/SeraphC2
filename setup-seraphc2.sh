@@ -15761,6 +15761,15 @@ EOF
 execute_main_installation() {
     log_info "Starting SeraphC2 installation process..."
     
+    # Ensure configuration is populated before proceeding
+    if [[ -z "${CONFIG[db_password]}" || -z "${CONFIG[jwt_secret]}" || -z "${CONFIG[encryption_key]}" ]]; then
+        log_info "Populating secure configuration before installation..."
+        if ! populate_configuration_array; then
+            log_error "Failed to populate configuration with secure values"
+            return $E_VALIDATION_ERROR
+        fi
+    fi
+    
     # Mark that cleanup is required from this point forward
     CLEANUP_REQUIRED="true"
     
