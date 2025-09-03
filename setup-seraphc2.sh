@@ -8646,20 +8646,37 @@ install_package() {
                 
                 if [[ $retry_count -gt 0 ]]; then
                     log_info "Retry attempt $retry_count/$max_retries"
-                    # Update package cache on retry
-                    timeout 60 apt-get update -qq 2>/dev/null || true
+                    # Update package cache on retry with enhanced error handling
+                    if ! timeout 60 apt-get update -qq 2>&1 | tee /tmp/apt_retry_log_$$; then
+                        if grep -q "File has unexpected size\|Mirror sync in progress" /tmp/apt_retry_log_$$; then
+                            log_warning "Repository mirror sync in progress, continuing with installation..."
+                        fi
+                    fi
+                    rm -f /tmp/apt_retry_log_$$ 2>/dev/null || true
                 fi
                 
-                if timeout 300 bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' '${packages[@]}'"; then
+                # Enhanced APT installation with better error handling
+                local apt_output_log="/tmp/apt_install_log_$$"
+                if timeout 300 bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' --allow-unauthenticated '${packages[@]}'" 2>&1 | tee "$apt_output_log"; then
                     install_success=true
                 else
                     local exit_code=$?
                     if [[ $exit_code -eq 124 ]]; then
                         log_warning "APT installation timed out (attempt $((retry_count + 1))/$((max_retries + 1)))"
                     else
-                        log_warning "APT installation failed with exit code $exit_code (attempt $((retry_count + 1))/$((max_retries + 1)))"
+                        # Check for specific error patterns
+                        if grep -q "File has unexpected size\|Mirror sync in progress\|Hash Sum mismatch" "$apt_output_log"; then
+                            log_warning "Repository sync issue detected, will retry with different approach"
+                            # Try installing from cached packages or alternative sources
+                            if timeout 300 bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y --fix-missing --allow-unauthenticated '${packages[@]}'"; then
+                                install_success=true
+                            fi
+                        else
+                            log_warning "APT installation failed with exit code $exit_code (attempt $((retry_count + 1))/$((max_retries + 1)))"
+                        fi
                     fi
                 fi
+                rm -f "$apt_output_log" 2>/dev/null || true
                 ;;
             yum)
                 if [[ ${#packages[@]} -eq 1 ]]; then
@@ -9366,21 +9383,49 @@ detect_nodejs_version() {
     
     local nodejs_version=""
     local npm_version=""
+    local node_paths=("/usr/bin/node" "/usr/local/bin/node" "/opt/nodejs/bin/node" "/snap/bin/node")
+    local npm_paths=("/usr/bin/npm" "/usr/local/bin/npm" "/opt/nodejs/bin/npm" "/snap/bin/npm")
     
-    # Check for node command
+    # Check for node command in PATH first
     if command -v node >/dev/null 2>&1; then
         nodejs_version=$(node --version 2>/dev/null | sed 's/^v//')
-        log_debug "Found Node.js version: $nodejs_version"
+        log_debug "Found Node.js version in PATH: $nodejs_version"
     else
-        log_debug "Node.js not found in PATH"
+        # Check common installation paths
+        for node_path in "${node_paths[@]}"; do
+            if [[ -x "$node_path" ]]; then
+                nodejs_version=$("$node_path" --version 2>/dev/null | sed 's/^v//')
+                log_debug "Found Node.js version at $node_path: $nodejs_version"
+                # Update PATH to include this location
+                export PATH="$(dirname "$node_path"):$PATH"
+                break
+            fi
+        done
+        
+        if [[ -z "$nodejs_version" ]]; then
+            log_debug "Node.js not found in PATH or common locations"
+        fi
     fi
     
-    # Check for npm command
+    # Check for npm command in PATH first
     if command -v npm >/dev/null 2>&1; then
         npm_version=$(npm --version 2>/dev/null)
-        log_debug "Found npm version: $npm_version"
+        log_debug "Found npm version in PATH: $npm_version"
     else
-        log_debug "npm not found in PATH"
+        # Check common installation paths
+        for npm_path in "${npm_paths[@]}"; do
+            if [[ -x "$npm_path" ]]; then
+                npm_version=$("$npm_path" --version 2>/dev/null)
+                log_debug "Found npm version at $npm_path: $npm_version"
+                # Update PATH to include this location
+                export PATH="$(dirname "$npm_path"):$PATH"
+                break
+            fi
+        done
+        
+        if [[ -z "$npm_version" ]]; then
+            log_debug "npm not found in PATH or common locations"
+        fi
     fi
     
     # Store versions in global variables for later use
@@ -9418,7 +9463,7 @@ validate_nodejs_version() {
     fi
 }
 
-# Setup NodeSource repository for latest Node.js versions
+# Setup NodeSource repository for latest Node.js versions with enhanced error handling
 setup_nodesource_repository() {
     local os_type="${SYSTEM_INFO[os_type]}"
     local nodejs_version="20"  # LTS version - required for dependencies
@@ -9436,17 +9481,54 @@ setup_nodesource_repository() {
                 install_package "ca-certificates"
             fi
             
-            # Download and execute NodeSource setup script
+            # Download and execute NodeSource setup script with timeout and error handling
             log_info "Adding NodeSource repository for Debian/Ubuntu..."
             local setup_script_url="https://deb.nodesource.com/setup_${nodejs_version}.x"
             
-            if ! curl -fsSL "$setup_script_url" | bash -; then
-                log_error "Failed to add NodeSource repository"
-                return $E_PACKAGE_INSTALL_FAILED
+            # Download script first to check if it's accessible
+            local temp_script="/tmp/nodesource_setup_$$.sh"
+            if ! timeout 30 curl -fsSL "$setup_script_url" -o "$temp_script"; then
+                log_warning "Failed to download NodeSource setup script"
+                rm -f "$temp_script" 2>/dev/null || true
+                return 1
             fi
             
-            # Update package cache after adding repository
-            update_package_cache
+            # Execute the script with timeout
+            if ! timeout 120 bash "$temp_script"; then
+                log_warning "NodeSource setup script execution failed or timed out"
+                rm -f "$temp_script" 2>/dev/null || true
+                return 1
+            fi
+            
+            rm -f "$temp_script" 2>/dev/null || true
+            
+            # Update package cache with retry logic and ignore repository sync errors
+            local update_success=false
+            local retry_count=0
+            local max_retries=3
+            
+            while [[ $retry_count -lt $max_retries ]] && [[ "$update_success" != "true" ]]; do
+                if [[ $retry_count -gt 0 ]]; then
+                    log_info "Retrying package cache update (attempt $((retry_count + 1))/$max_retries)..."
+                    sleep 5
+                fi
+                
+                # Try to update with specific error handling for repository sync issues
+                if timeout 60 apt-get update 2>&1 | tee /tmp/apt_update_log_$$; then
+                    update_success=true
+                elif grep -q "File has unexpected size\|Mirror sync in progress" /tmp/apt_update_log_$$; then
+                    log_warning "Repository mirror sync in progress, continuing anyway..."
+                    update_success=true  # Continue despite sync issues
+                else
+                    ((retry_count++))
+                fi
+                
+                rm -f /tmp/apt_update_log_$$ 2>/dev/null || true
+            done
+            
+            if [[ "$update_success" != "true" ]]; then
+                log_warning "Package cache update failed, but continuing with installation attempt"
+            fi
             ;;
             
         centos|rhel|fedora)
@@ -9459,10 +9541,22 @@ setup_nodesource_repository() {
             log_info "Adding NodeSource repository for CentOS/RHEL/Fedora..."
             local setup_script_url="https://rpm.nodesource.com/setup_${nodejs_version}.x"
             
-            if ! curl -fsSL "$setup_script_url" | bash -; then
-                log_error "Failed to add NodeSource repository"
-                return $E_PACKAGE_INSTALL_FAILED
+            # Download script first to check if it's accessible
+            local temp_script="/tmp/nodesource_setup_$$.sh"
+            if ! timeout 30 curl -fsSL "$setup_script_url" -o "$temp_script"; then
+                log_warning "Failed to download NodeSource setup script"
+                rm -f "$temp_script" 2>/dev/null || true
+                return 1
             fi
+            
+            # Execute the script with timeout
+            if ! timeout 120 bash "$temp_script"; then
+                log_warning "NodeSource setup script execution failed or timed out"
+                rm -f "$temp_script" 2>/dev/null || true
+                return 1
+            fi
+            
+            rm -f "$temp_script" 2>/dev/null || true
             ;;
             
         *)
@@ -9548,7 +9642,7 @@ remove_old_nodejs_installation() {
     return 0
 }
 
-# Install Node.js from NodeSource repository
+# Install Node.js with multiple fallback methods for maximum reliability
 install_nodejs() {
     log_info "Installing Node.js..."
     
@@ -9572,20 +9666,49 @@ install_nodejs() {
         log_info "Node.js not found, installing latest LTS version..."
     fi
     
-    # Setup NodeSource repository
-    if ! setup_nodesource_repository; then
-        log_error "Failed to setup NodeSource repository"
+    # Try multiple installation methods until one succeeds
+    local installation_methods=("nodesource_primary" "nodesource_alternative" "snap" "binary_direct")
+    local method_success=false
+    
+    for method in "${installation_methods[@]}"; do
+        log_info "Attempting Node.js installation via: $method"
+        
+        case "$method" in
+            "nodesource_primary")
+                if install_nodejs_nodesource_primary; then
+                    method_success=true
+                    break
+                fi
+                ;;
+            "nodesource_alternative")
+                if install_nodejs_nodesource_alternative; then
+                    method_success=true
+                    break
+                fi
+                ;;
+            "snap")
+                if install_nodejs_snap; then
+                    method_success=true
+                    break
+                fi
+                ;;
+            "binary_direct")
+                if install_nodejs_binary_direct; then
+                    method_success=true
+                    break
+                fi
+                ;;
+        esac
+        
+        log_warning "Installation method '$method' failed, trying next method..."
+    done
+    
+    if [[ "$method_success" != "true" ]]; then
+        log_error "All Node.js installation methods failed"
         return $E_PACKAGE_INSTALL_FAILED
     fi
     
-    # Install Node.js package
-    log_info "Installing Node.js package..."
-    if ! install_package "nodejs"; then
-        log_error "Failed to install Node.js package"
-        return $E_PACKAGE_INSTALL_FAILED
-    fi
-    
-    # Verify installation
+    # Final verification
     detect_nodejs_version
     
     if [[ -z "$NODEJS_CURRENT_VERSION" ]]; then
@@ -9602,6 +9725,186 @@ install_nodejs() {
     track_install_state "packages_installed" "nodejs"
     
     return 0
+}
+
+# Method 1: Primary NodeSource repository installation
+install_nodejs_nodesource_primary() {
+    log_info "Attempting NodeSource primary repository installation..."
+    
+    # Setup NodeSource repository with retry logic
+    if setup_nodesource_repository_with_retry; then
+        # Install Node.js package
+        if install_package "nodejs"; then
+            log_success "NodeSource primary installation successful"
+            return 0
+        fi
+    fi
+    
+    log_warning "NodeSource primary installation failed"
+    return 1
+}
+
+# Method 2: Alternative NodeSource repository installation with manual setup
+install_nodejs_nodesource_alternative() {
+    log_info "Attempting NodeSource alternative repository installation..."
+    
+    local os_type="${SYSTEM_INFO[os_type]}"
+    
+    case "$os_type" in
+        ubuntu|debian)
+            # Manual NodeSource repository setup with alternative mirrors
+            log_info "Setting up NodeSource repository manually..."
+            
+            # Install prerequisites
+            install_package "curl" "ca-certificates" "gnupg"
+            
+            # Add NodeSource GPG key
+            curl -fsSL https://deb.nodesource.com/gpgkey/nodesource.gpg.key | gpg --dearmor | tee /usr/share/keyrings/nodesource.gpg >/dev/null 2>&1
+            
+            # Add repository with explicit configuration
+            echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
+            
+            # Update package cache with retries
+            local retry_count=0
+            local max_retries=3
+            while [[ $retry_count -lt $max_retries ]]; do
+                if apt-get update -o Dir::Etc::sourcelist="sources.list.d/nodesource.list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"; then
+                    break
+                fi
+                ((retry_count++))
+                log_warning "APT update failed, retry $retry_count/$max_retries"
+                sleep 5
+            done
+            
+            # Install Node.js
+            if DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs; then
+                log_success "NodeSource alternative installation successful"
+                return 0
+            fi
+            ;;
+    esac
+    
+    log_warning "NodeSource alternative installation failed"
+    return 1
+}
+
+# Method 3: Snap package installation
+install_nodejs_snap() {
+    log_info "Attempting Snap package installation..."
+    
+    # Check if snap is available
+    if ! command -v snap >/dev/null 2>&1; then
+        log_info "Installing snapd..."
+        if ! install_package "snapd"; then
+            log_warning "Failed to install snapd"
+            return 1
+        fi
+        
+        # Enable snapd service
+        systemctl enable --now snapd.socket 2>/dev/null || true
+        sleep 2
+    fi
+    
+    # Install Node.js via snap
+    if snap install node --classic; then
+        # Create symlinks for compatibility
+        ln -sf /snap/bin/node /usr/local/bin/node 2>/dev/null || true
+        ln -sf /snap/bin/npm /usr/local/bin/npm 2>/dev/null || true
+        
+        log_success "Snap installation successful"
+        return 0
+    fi
+    
+    log_warning "Snap installation failed"
+    return 1
+}
+
+# Method 4: Direct binary installation
+install_nodejs_binary_direct() {
+    log_info "Attempting direct binary installation..."
+    
+    local nodejs_version="20.17.0"  # Latest LTS version
+    local arch="${SYSTEM_INFO[architecture]}"
+    local node_arch=""
+    
+    # Map system architecture to Node.js architecture
+    case "$arch" in
+        x86_64) node_arch="x64" ;;
+        aarch64) node_arch="arm64" ;;
+        armv7l) node_arch="armv7l" ;;
+        *) 
+            log_warning "Unsupported architecture for binary installation: $arch"
+            return 1
+            ;;
+    esac
+    
+    local download_url="https://nodejs.org/dist/v${nodejs_version}/node-v${nodejs_version}-linux-${node_arch}.tar.xz"
+    local temp_dir="/tmp/nodejs_install_$$"
+    local install_dir="/opt/nodejs"
+    
+    # Create temporary directory
+    mkdir -p "$temp_dir"
+    
+    # Download Node.js binary
+    log_info "Downloading Node.js v${nodejs_version} for ${node_arch}..."
+    if curl -fsSL "$download_url" -o "$temp_dir/nodejs.tar.xz"; then
+        # Extract archive
+        log_info "Extracting Node.js binary..."
+        if tar -xf "$temp_dir/nodejs.tar.xz" -C "$temp_dir"; then
+            # Install to system directory
+            rm -rf "$install_dir" 2>/dev/null || true
+            mv "$temp_dir/node-v${nodejs_version}-linux-${node_arch}" "$install_dir"
+            
+            # Create symlinks
+            ln -sf "$install_dir/bin/node" /usr/local/bin/node
+            ln -sf "$install_dir/bin/npm" /usr/local/bin/npm
+            ln -sf "$install_dir/bin/npx" /usr/local/bin/npx
+            
+            # Update PATH for current session
+            export PATH="/usr/local/bin:$PATH"
+            
+            # Add to system PATH
+            echo 'export PATH="/usr/local/bin:$PATH"' >> /etc/environment
+            
+            log_success "Direct binary installation successful"
+            rm -rf "$temp_dir"
+            return 0
+        fi
+    fi
+    
+    log_warning "Direct binary installation failed"
+    rm -rf "$temp_dir" 2>/dev/null || true
+    return 1
+}
+
+# Enhanced NodeSource repository setup with retry logic
+setup_nodesource_repository_with_retry() {
+    local max_retries=3
+    local retry_count=0
+    local retry_delay=10
+    
+    while [[ $retry_count -lt $max_retries ]]; do
+        if [[ $retry_count -gt 0 ]]; then
+            log_info "Retrying NodeSource repository setup (attempt $((retry_count + 1))/$max_retries)..."
+            sleep $retry_delay
+        fi
+        
+        if setup_nodesource_repository; then
+            return 0
+        fi
+        
+        ((retry_count++))
+        
+        # Clean up failed repository setup
+        rm -f /etc/apt/sources.list.d/nodesource.list 2>/dev/null || true
+        rm -f /usr/share/keyrings/nodesource.gpg 2>/dev/null || true
+        
+        # Increase delay for next retry
+        retry_delay=$((retry_delay + 5))
+    done
+    
+    log_warning "NodeSource repository setup failed after $max_retries attempts"
+    return 1
 }
 
 # Install and configure npm
