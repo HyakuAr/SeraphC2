@@ -10444,7 +10444,7 @@ install_application_dependencies() {
     log_info "Installing Node.js dependencies..."
     start_spinner "Installing dependencies"
     
-    if ! sudo -u "$service_user" HOME="$app_dir" npm ci --only=production --no-audit --no-fund --cache="$app_dir/.npm" --tmp="$app_dir/.npm-tmp"; then
+    if ! sudo -u "$service_user" HOME="$app_dir" npm ci --no-audit --no-fund --cache="$app_dir/.npm" --tmp="$app_dir/.npm-tmp"; then
         stop_spinner
         log_error "Failed to install Node.js dependencies"
         return 1
@@ -10464,7 +10464,7 @@ install_application_dependencies() {
         
         start_spinner "Installing web client dependencies"
         
-        if ! sudo -u "$service_user" HOME="$app_dir" npm ci --only=production --no-audit --no-fund --cache="$app_dir/.npm" --tmp="$app_dir/.npm-tmp"; then
+        if ! sudo -u "$service_user" HOME="$app_dir" npm ci --no-audit --no-fund --cache="$app_dir/.npm" --tmp="$app_dir/.npm-tmp"; then
             stop_spinner
             log_error "Failed to install web client dependencies"
             return 1
