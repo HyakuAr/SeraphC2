@@ -6346,22 +6346,29 @@ configure_firewall() {
     
     if [[ "$firewall_type" == "none" ]]; then
         log_warning "No firewall system detected. Installing UFW as default..."
-        install_ufw
+        if ! install_ufw; then
+            log_error "Failed to install UFW firewall"
+            return $E_FIREWALL_ERROR
+        fi
         firewall_type="ufw"
         SYSTEM_INFO[firewall_system]="ufw"
     fi
     
     log_info "Configuring $firewall_type firewall..."
     
+    local config_result=0
     case "$firewall_type" in
         "ufw")
             configure_ufw_firewall
+            config_result=$?
             ;;
         "firewalld")
             configure_firewalld_firewall
+            config_result=$?
             ;;
         "iptables")
             configure_iptables_firewall
+            config_result=$?
             ;;
         *)
             log_error "Unsupported firewall system: $firewall_type"
@@ -6369,8 +6376,17 @@ configure_firewall() {
             ;;
     esac
     
+    # Check if configuration was successful
+    if [[ $config_result -ne 0 ]]; then
+        log_error "Firewall configuration failed with exit code: $config_result"
+        return $config_result
+    fi
+    
     # Test firewall configuration
-    test_firewall_configuration
+    if ! test_firewall_configuration; then
+        log_warning "Firewall configuration test failed, but continuing..."
+        # Don't fail the entire installation for firewall test issues
+    fi
     
     log_success "Firewall configuration completed successfully"
     return 0
@@ -6407,16 +6423,26 @@ install_ufw() {
 configure_ufw_firewall() {
     log_info "Configuring UFW firewall rules..."
     
-    # Reset UFW to default state
-    ufw --force reset
-    
-    # Set default policies
-    ufw default deny incoming
-    ufw default allow outgoing
+    # Check if UFW is already enabled
+    local ufw_status=$(ufw status 2>/dev/null | head -1 | awk '{print $2}')
+    if [[ "$ufw_status" == "active" ]]; then
+        log_info "UFW is already active, configuring rules without reset..."
+    else
+        # Reset UFW to default state only if not active
+        log_info "Resetting UFW to default state..."
+        ufw --force reset
+        
+        # Set default policies
+        ufw default deny incoming
+        ufw default allow outgoing
+    fi
     
     # Allow SSH with rate limiting if enabled
     if [[ "${CONFIG[allow_ssh]}" == "true" ]]; then
         log_info "Configuring SSH access with rate limiting..."
+        # Remove existing SSH rules first to avoid duplicates
+        ufw --force delete allow ssh 2>/dev/null || true
+        ufw --force delete limit ssh 2>/dev/null || true
         ufw limit ssh comment 'SSH with rate limiting'
         track_install_state "firewall_rules_added" "ssh_limit"
     fi
@@ -6424,35 +6450,53 @@ configure_ufw_firewall() {
     # Allow HTTP port
     local http_port="${CONFIG[http_port]}"
     log_info "Opening HTTP port: $http_port"
+    # Remove existing rule if present to avoid duplicates
+    ufw --force delete allow "$http_port/tcp" 2>/dev/null || true
     ufw allow "$http_port/tcp" comment 'SeraphC2 HTTP'
     track_install_state "firewall_rules_added" "http_$http_port"
     
     # Allow HTTPS port
     local https_port="${CONFIG[https_port]}"
     log_info "Opening HTTPS port: $https_port"
+    # Remove existing rule if present to avoid duplicates
+    ufw --force delete allow "$https_port/tcp" 2>/dev/null || true
     ufw allow "$https_port/tcp" comment 'SeraphC2 HTTPS'
     track_install_state "firewall_rules_added" "https_$https_port"
     
     # Allow implant communication port
     local implant_port="${CONFIG[implant_port]}"
     log_info "Opening implant communication port: $implant_port"
+    # Remove existing rule if present to avoid duplicates
+    ufw --force delete allow "$implant_port/tcp" 2>/dev/null || true
     ufw allow "$implant_port/tcp" comment 'SeraphC2 Implant Communication'
     track_install_state "firewall_rules_added" "implant_$implant_port"
     
     # Add additional security rules
     configure_ufw_security_rules
     
-    # Enable UFW
-    log_info "Enabling UFW firewall..."
-    ufw --force enable
+    # Enable UFW (this is safe to run even if already enabled)
+    log_info "Ensuring UFW firewall is enabled..."
+    local enable_output=$(ufw --force enable 2>&1)
+    local enable_status=$?
     
-    # Verify UFW status
-    if ! ufw status | grep -q "Status: active"; then
-        log_error "Failed to enable UFW firewall"
+    # UFW returns success even if already enabled, but let's check the output
+    if [[ $enable_status -eq 0 ]]; then
+        log_debug "UFW enable command output: $enable_output"
+        log_success "UFW firewall is enabled"
+    else
+        log_error "Failed to enable UFW firewall: $enable_output"
         return $E_FIREWALL_ERROR
     fi
     
-    log_success "UFW firewall configured and enabled"
+    # Verify UFW status
+    local final_status=$(ufw status 2>/dev/null | head -1 | awk '{print $2}')
+    if [[ "$final_status" != "active" ]]; then
+        log_error "UFW firewall is not active after configuration"
+        log_error "UFW status output: $(ufw status 2>&1)"
+        return $E_FIREWALL_ERROR
+    fi
+    
+    log_success "UFW firewall configured and verified active"
     return 0
 }
 
@@ -6463,17 +6507,32 @@ configure_ufw_security_rules() {
     # Block common attack ports
     local attack_ports=(23 135 139 445 1433 3389)
     for port in "${attack_ports[@]}"; do
+        # Remove existing rule if present to avoid duplicates
+        ufw --force delete deny "$port" 2>/dev/null || true
         ufw deny "$port" comment "Block common attack port $port"
         track_install_state "firewall_rules_added" "block_$port"
     done
     
-    # Rate limit web ports to prevent DoS
-    ufw limit "${CONFIG[http_port]}/tcp" comment 'Rate limit HTTP'
-    ufw limit "${CONFIG[https_port]}/tcp" comment 'Rate limit HTTPS'
+    # Rate limit web ports to prevent DoS (only if not already configured)
+    local http_port="${CONFIG[http_port]}"
+    local https_port="${CONFIG[https_port]}"
     
-    # Allow loopback traffic
-    ufw allow in on lo
-    ufw allow out on lo
+    # Check if rate limiting rules already exist
+    if ! ufw status numbered | grep -q "LIMIT.*$http_port/tcp"; then
+        ufw limit "$http_port/tcp" comment 'Rate limit HTTP'
+    else
+        log_debug "HTTP rate limiting rule already exists"
+    fi
+    
+    if ! ufw status numbered | grep -q "LIMIT.*$https_port/tcp"; then
+        ufw limit "$https_port/tcp" comment 'Rate limit HTTPS'
+    else
+        log_debug "HTTPS rate limiting rule already exists"
+    fi
+    
+    # Allow loopback traffic (safe to run multiple times)
+    ufw allow in on lo 2>/dev/null || true
+    ufw allow out on lo 2>/dev/null || true
     
     log_debug "Additional UFW security rules applied"
 }
@@ -14619,7 +14678,7 @@ main() {
     fi
     
     # Firewall configuration (Task 14) - IMPLEMENTED
-    if ! configure_firewall_system; then
+    if ! configure_firewall; then
         log_error "Firewall configuration failed"
         exit $E_FIREWALL_ERROR
     fi
