@@ -166,7 +166,11 @@ POSTGRESQL_SERVICE_STATUS=""
 init_logging() {
     SCRIPT_START_TIME=$(date +%s)
     local timestamp=$(date +%Y%m%d_%H%M%S)
-    SCRIPT_LOG_FILE="/tmp/seraphc2_setup_${timestamp}.log"
+    # Use mktemp for secure temporary log file
+    SCRIPT_LOG_FILE=$(mktemp /tmp/seraphc2_setup_XXXXXX.log) || {
+        echo "Warning: Could not create secure log file, using fallback" >&2
+        SCRIPT_LOG_FILE="/tmp/seraphc2_setup_${timestamp}.log"
+    }
     
     # Create log file with proper permissions
     touch "$SCRIPT_LOG_FILE" || {
@@ -1254,8 +1258,11 @@ cleanup_temporary_files() {
     rm -f /tmp/iptables.backup.* 2>/dev/null || true
     rm -f /tmp/seraphc2_*.tmp 2>/dev/null || true
     
-    # Clean up any remaining SeraphC2-related temporary files
-    find /tmp -name "*seraphc2*" -type f -mtime +0 -delete 2>/dev/null || true
+    # Clean up any remaining SeraphC2-related temporary files (safely)
+    # Only clean files we know we created
+    rm -f /tmp/seraphc2_session_test 2>/dev/null || true
+    rm -f /tmp/iptables.backup.* 2>/dev/null || true
+    rm -f /tmp/seraphc2_*.tmp 2>/dev/null || true
     
     log_debug "Temporary file cleanup completed"
 }
@@ -1383,22 +1390,7 @@ readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly NC='\033[0m'
 
-# Logging functions
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[✓]${NC} $1"
-}
-
-log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1" >&2
-}
-
-log_error() {
-    echo -e "${RED}[✗]${NC} $1" >&2
-}
+# Note: Main logging functions are defined earlier in the script
 
 # Confirmation function
 confirm_action() {
@@ -3566,10 +3558,12 @@ validate_end_to_end_functionality() {
     
     # Test 4: Session management
     log_verbose "Testing session management..."
-    local session_test=$(curl -s -k -c /tmp/seraphc2_session_test -b /tmp/seraphc2_session_test "$base_url/" 2>/dev/null)
-    if [[ -f "/tmp/seraphc2_session_test" ]]; then
+    # Create secure temporary file for session test
+    local session_file=$(mktemp /tmp/seraphc2_session_XXXXXX) || session_file="/tmp/seraphc2_session_test"
+    local session_test=$(curl -s -k -c "$session_file" -b "$session_file" "$base_url/" 2>/dev/null)
+    if [[ -f "$session_file" ]]; then
         log_verbose "Session management is working"
-        rm -f /tmp/seraphc2_session_test
+        rm -f "$session_file"
     else
         log_warning "Session management test inconclusive"
     fi
@@ -4312,9 +4306,17 @@ check_seraphc2_updates() {
     
     # Get latest version from GitHub API
     if command -v curl >/dev/null 2>&1; then
-        latest_version=$(curl -s "$SERAPHC2_RELEASES_URL/latest" | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/' | sed 's/^v//')
+        latest_version=$(curl -s --connect-timeout 10 --max-time 30 "$SERAPHC2_RELEASES_URL/latest" 2>/dev/null | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/' | sed 's/^v//')
+        if [[ -z "$latest_version" ]]; then
+            log_warning "Failed to fetch latest version information via curl"
+            return 1
+        fi
     elif command -v wget >/dev/null 2>&1; then
-        latest_version=$(wget -qO- "$SERAPHC2_RELEASES_URL/latest" | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/' | sed 's/^v//')
+        latest_version=$(wget --timeout=30 --tries=2 -qO- "$SERAPHC2_RELEASES_URL/latest" 2>/dev/null | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/' | sed 's/^v//')
+        if [[ -z "$latest_version" ]]; then
+            log_warning "Failed to fetch latest version information via wget"
+            return 1
+        fi
     else
         log_warning "Neither curl nor wget available, cannot check for updates"
         return 1
@@ -8651,7 +8653,12 @@ install_package() {
                 if timeout 300 bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' '${packages[@]}'"; then
                     install_success=true
                 else
-                    log_warning "APT installation failed (attempt $((retry_count + 1))/$((max_retries + 1)))"
+                    local exit_code=$?
+                    if [[ $exit_code -eq 124 ]]; then
+                        log_warning "APT installation timed out (attempt $((retry_count + 1))/$((max_retries + 1)))"
+                    else
+                        log_warning "APT installation failed with exit code $exit_code (attempt $((retry_count + 1))/$((max_retries + 1)))"
+                    fi
                 fi
                 ;;
             yum)
@@ -8669,7 +8676,12 @@ install_package() {
                 if timeout 300 yum install -y "${packages[@]}"; then
                     install_success=true
                 else
-                    log_warning "YUM installation failed (attempt $((retry_count + 1))/$((max_retries + 1)))"
+                    local exit_code=$?
+                    if [[ $exit_code -eq 124 ]]; then
+                        log_warning "YUM installation timed out (attempt $((retry_count + 1))/$((max_retries + 1)))"
+                    else
+                        log_warning "YUM installation failed with exit code $exit_code (attempt $((retry_count + 1))/$((max_retries + 1)))"
+                    fi
                 fi
                 ;;
             dnf)
@@ -8687,7 +8699,12 @@ install_package() {
                 if timeout 300 dnf install -y "${packages[@]}"; then
                     install_success=true
                 else
-                    log_warning "DNF installation failed (attempt $((retry_count + 1))/$((max_retries + 1)))"
+                    local exit_code=$?
+                    if [[ $exit_code -eq 124 ]]; then
+                        log_warning "DNF installation timed out (attempt $((retry_count + 1))/$((max_retries + 1)))"
+                    else
+                        log_warning "DNF installation failed with exit code $exit_code (attempt $((retry_count + 1))/$((max_retries + 1)))"
+                    fi
                 fi
                 ;;
             *)
@@ -9590,6 +9607,12 @@ create_service_user() {
         --comment "SeraphC2 Service User" \
         "$service_user"; then
         log_error "Failed to create service user: $service_user"
+        return $E_SERVICE_ERROR
+    fi
+    
+    # Verify user was actually created
+    if ! id "$service_user" >/dev/null 2>&1; then
+        log_error "Service user creation appeared to succeed but user does not exist"
         return $E_SERVICE_ERROR
     fi
     
@@ -12338,10 +12361,27 @@ test_database_connection() {
     # Set PGPASSWORD environment variable for authentication
     export PGPASSWORD="$db_password"
     
-    # Test basic connection
+    # Test basic connection with retry logic
     log_debug "Testing basic database connection..."
-    if ! psql -h "$db_host" -p "$db_port" -U "$db_user" -d "$db_name" -c "SELECT 1;" >/dev/null 2>&1; then
-        log_error "Failed to connect to database"
+    local max_retries=5
+    local retry_delay=2
+    local connection_success=false
+    
+    for ((i=1; i<=max_retries; i++)); do
+        if psql -h "$db_host" -p "$db_port" -U "$db_user" -d "$db_name" -c "SELECT 1;" >/dev/null 2>&1; then
+            connection_success=true
+            break
+        else
+            if [[ $i -lt $max_retries ]]; then
+                log_debug "Database connection attempt $i failed, retrying in ${retry_delay}s..."
+                sleep $retry_delay
+                retry_delay=$((retry_delay * 2))  # Exponential backoff
+            fi
+        fi
+    done
+    
+    if [[ "$connection_success" != "true" ]]; then
+        log_error "Failed to connect to database after $max_retries attempts"
         log_error "Connection details: host=$db_host, port=$db_port, user=$db_user, database=$db_name"
         unset PGPASSWORD
         return $E_DATABASE_ERROR
@@ -12440,8 +12480,17 @@ check_migration_status() {
     
     # Verify migrations directory exists
     if [[ ! -d "$migrations_dir" ]]; then
-        log_error "Migrations directory not found: $migrations_dir"
-        return $E_DATABASE_ERROR
+        log_warning "Migrations directory not found: $migrations_dir"
+        log_info "This is expected if application hasn't been deployed yet"
+        
+        # Check if we're in the source directory and migrations exist there
+        if [[ -d "./migrations" ]]; then
+            log_info "Found migrations in current directory, they will be copied during application deployment"
+            return 0
+        else
+            log_error "No migrations found in current directory either"
+            return $E_DATABASE_ERROR
+        fi
     fi
     
     # Count migration files
@@ -12671,6 +12720,13 @@ run_database_migrations() {
     local migrations_dir="$app_dir/migrations"
     
     log_info "Running database migrations..."
+    
+    # Verify migrations directory exists (should be available after application deployment)
+    if [[ ! -d "$migrations_dir" ]]; then
+        log_error "Migrations directory not found: $migrations_dir"
+        log_error "Ensure application has been deployed before running migrations"
+        return $E_DATABASE_ERROR
+    fi
     
     # Step 1: Create backup before migrations
     if [[ "${CONFIG[skip_backup]}" != "true" ]]; then
@@ -13013,14 +13069,77 @@ setup_postgresql_database() {
         return $E_DATABASE_ERROR
     fi
     
-    # Step 7: Prepare for migrations
-    if ! run_database_migrations; then
-        log_error "Database migration preparation failed"
-        return $E_DATABASE_ERROR
-    fi
+    # Step 7: Database is ready for migrations (migrations will be run after application deployment)
     
     log_success "PostgreSQL database system setup completed successfully"
     return 0
+}
+
+# Initialize database schema by running migrations
+initialize_database_schema() {
+    log_info "Initializing database schema..."
+    
+    # Ensure migrations are available before running them
+    if ! ensure_migrations_available; then
+        log_error "Failed to ensure migrations are available"
+        return $E_DATABASE_ERROR
+    fi
+    
+    # Run database migrations now that application is deployed
+    if ! run_database_migrations; then
+        log_error "Database migration failed"
+        return $E_DATABASE_ERROR
+    fi
+    
+    log_success "Database schema initialized successfully"
+    return 0
+}
+
+# Ensure migrations are available in the app directory
+ensure_migrations_available() {
+    local app_dir="${CONFIG[app_dir]}"
+    local migrations_dir="$app_dir/migrations"
+    
+    # Check if migrations directory exists in app directory
+    if [[ -d "$migrations_dir" ]]; then
+        log_debug "Migrations directory already exists in app directory"
+        return 0
+    fi
+    
+    # If not, try to copy from current directory as fallback
+    if [[ -d "./migrations" ]]; then
+        log_info "Copying migrations from current directory as fallback..."
+        
+        # Create app directory if it doesn't exist
+        if [[ ! -d "$app_dir" ]]; then
+            log_info "Creating application directory: $app_dir"
+            mkdir -p "$app_dir" || {
+                log_error "Failed to create application directory"
+                return 1
+            }
+        fi
+        
+        # Copy migrations
+        if cp -r "./migrations" "$app_dir/"; then
+            log_success "Migrations copied successfully"
+            
+            # Set proper ownership
+            local service_user="${CONFIG[service_user]}"
+            if id "$service_user" >/dev/null 2>&1; then
+                chown -R "$service_user:$service_user" "$migrations_dir" || {
+                    log_warning "Failed to set ownership of migrations directory"
+                }
+            fi
+            
+            return 0
+        else
+            log_error "Failed to copy migrations directory"
+            return 1
+        fi
+    else
+        log_error "No migrations directory found in current directory"
+        return 1
+    fi
 }
 
 #==============================================================================
@@ -15777,29 +15896,29 @@ execute_main_installation() {
     show_step 1 9 "Installing system dependencies"
     install_and_configure_nodejs
     
-    # Step 2: Setup database (already implemented in previous tasks)
-    show_step 2 9 "Setting up PostgreSQL database"
-    setup_postgresql_database
-    
-    # Step 3: Setup Redis (already implemented in previous tasks)
-    show_step 3 9 "Setting up Redis cache"
-    setup_redis_cache
-    
-    # Step 4: Setup SSL certificates (already implemented in previous tasks)
-    show_step 4 9 "Setting up SSL certificates"
-    setup_ssl_certificates
-    
-    # Step 5: Deploy application (already implemented in previous tasks)
-    show_step 5 9 "Deploying SeraphC2 application"
+    # Step 2: Deploy application (moved before database setup to ensure migrations are available)
+    show_step 2 9 "Deploying SeraphC2 application"
     deploy_seraphc2_application
     
-    # Step 6: Configure system service (already implemented in previous tasks)
-    show_step 6 9 "Configuring system service"
-    configure_systemd_service
+    # Step 3: Setup database (already implemented in previous tasks)
+    show_step 3 9 "Setting up PostgreSQL database"
+    setup_postgresql_database
     
-    # Step 7: Initialize database schema
-    show_step 7 9 "Initializing database schema"
+    # Step 4: Setup Redis (already implemented in previous tasks)
+    show_step 4 9 "Setting up Redis cache"
+    setup_redis_cache
+    
+    # Step 5: Initialize database schema (run migrations after database is set up)
+    show_step 5 9 "Initializing database schema"
     initialize_database_schema
+    
+    # Step 6: Setup SSL certificates (already implemented in previous tasks)
+    show_step 6 9 "Setting up SSL certificates"
+    setup_ssl_certificates
+    
+    # Step 7: Configure system service (already implemented in previous tasks)
+    show_step 7 9 "Configuring system service"
+    configure_systemd_service
     
     # Step 8: Configure firewall (THIS TASK - Task 14)
     show_step 8 9 "Configuring firewall"
