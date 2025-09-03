@@ -12070,14 +12070,33 @@ configure_postgresql_security() {
     local pg_hba_conf=""
     local postgresql_conf=""
     
+    # Detect PostgreSQL version
+    local pg_version=$(sudo -u postgres psql --version 2>/dev/null | grep -oE '[0-9]+' | head -1)
+    if [[ -z "$pg_version" ]]; then
+        # Fallback: check for existing data directories
+        for version in 16 15 14 13 12; do
+            if [[ -d "/var/lib/postgresql/$version/main" ]] || [[ -d "/var/lib/pgsql/$version/data" ]]; then
+                pg_version="$version"
+                break
+            fi
+        done
+    fi
+    
+    if [[ -z "$pg_version" ]]; then
+        log_error "Could not detect PostgreSQL version for configuration"
+        return $E_DATABASE_ERROR
+    fi
+    
+    log_debug "Using PostgreSQL version $pg_version for configuration paths"
+    
     case "$os_type" in
         ubuntu|debian)
-            pg_hba_conf="/etc/postgresql/15/main/pg_hba.conf"
-            postgresql_conf="/etc/postgresql/15/main/postgresql.conf"
+            pg_hba_conf="/etc/postgresql/$pg_version/main/pg_hba.conf"
+            postgresql_conf="/etc/postgresql/$pg_version/main/postgresql.conf"
             ;;
         centos|rhel|fedora)
-            pg_hba_conf="/var/lib/pgsql/15/data/pg_hba.conf"
-            postgresql_conf="/var/lib/pgsql/15/data/postgresql.conf"
+            pg_hba_conf="/var/lib/pgsql/$pg_version/data/pg_hba.conf"
+            postgresql_conf="/var/lib/pgsql/$pg_version/data/postgresql.conf"
             ;;
         *)
             log_error "PostgreSQL security configuration not supported for OS: $os_type"
