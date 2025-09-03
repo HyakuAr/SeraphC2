@@ -19,7 +19,7 @@ SeraphC2 is an advanced Command and Control (C2) framework designed for Windows 
 ### Prerequisites
 
 - **Supported Operating System** (see [Compatibility](#compatibility) section)
-- Node.js 18+ and npm
+- Node.js 20+ and npm
 - PostgreSQL 13+ (automatically installed by setup script)
 - Redis 6+ (automatically installed by setup script)
 - Docker and Docker Compose (optional, for containerized deployment)
@@ -112,8 +112,8 @@ SeraphC2 requires **PostgreSQL 13+** which limits compatibility to newer operati
 
 ### Node.js Requirements
 
-- **Node.js**: Version 18 or higher
-- **npm**: Version 8 or higher (comes with Node.js 18+)
+- **Node.js**: Version 20 or higher
+- **npm**: Version 9 or higher (comes with Node.js 20+)
 
 ### Migration from Unsupported Systems
 

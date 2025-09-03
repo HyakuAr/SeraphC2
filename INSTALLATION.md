@@ -103,8 +103,8 @@ New-NetFirewallRule -DisplayName "SeraphC2 HTTPS" -Direction Inbound -Port 8443 
 # Update package index
 sudo apt update
 
-# Install Node.js 18.x
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+# Install Node.js 20.x
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
 # Verify installation
@@ -114,8 +114,8 @@ npm --version
 
 **CentOS/RHEL:**
 ```bash
-# Install Node.js 18.x
-curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
+# Install Node.js 20.x
+curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
 sudo yum install -y nodejs
 
 # Verify installation

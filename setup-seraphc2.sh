@@ -8960,7 +8960,7 @@ add_repository() {
                 nodesource)
                     # Add NodeSource repository for Node.js
                     log_info "Adding NodeSource repository for Node.js..."
-                    if ! curl -fsSL https://deb.nodesource.com/setup_18.x | bash -; then
+                    if ! curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; then
                         log_error "Failed to add NodeSource repository"
                         return $E_PACKAGE_INSTALL_FAILED
                     fi
@@ -9168,7 +9168,7 @@ add_repository() {
                 nodesource)
                     # Add NodeSource repository for Node.js
                     log_info "Adding NodeSource repository for Node.js..."
-                    if ! curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -; then
+                    if ! curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -; then
                         log_error "Failed to add NodeSource repository"
                         return $E_PACKAGE_INSTALL_FAILED
                     fi
@@ -9393,7 +9393,7 @@ detect_nodejs_version() {
 # Validate Node.js version meets minimum requirements
 validate_nodejs_version() {
     local version="$1"
-    local min_version="18"
+    local min_version="20"
     
     if [[ -z "$version" ]]; then
         log_debug "No Node.js version to validate"
@@ -9421,7 +9421,7 @@ validate_nodejs_version() {
 # Setup NodeSource repository for latest Node.js versions
 setup_nodesource_repository() {
     local os_type="${SYSTEM_INFO[os_type]}"
-    local nodejs_version="18"  # LTS version
+    local nodejs_version="20"  # LTS version - required for dependencies
     
     log_info "Setting up NodeSource repository for Node.js $nodejs_version..."
     
@@ -9476,6 +9476,78 @@ setup_nodesource_repository() {
     return 0
 }
 
+# Remove old Node.js installation cleanly
+remove_old_nodejs_installation() {
+    log_info "Removing old Node.js installation..."
+    
+    local os_type="${SYSTEM_INFO[os_type]}"
+    
+    # Stop any Node.js processes
+    log_info "Stopping any running Node.js processes..."
+    pkill -f node || true
+    
+    # Remove Node.js packages based on OS
+    case "$os_type" in
+        "ubuntu"|"debian")
+            log_info "Removing Node.js packages (Ubuntu/Debian)..."
+            
+            # Remove nodejs and npm packages
+            apt-get remove -y nodejs npm || true
+            apt-get purge -y nodejs npm || true
+            apt-get autoremove -y || true
+            
+            # Remove NodeSource repository if it exists
+            rm -f /etc/apt/sources.list.d/nodesource.list || true
+            rm -f /usr/share/keyrings/nodesource.gpg || true
+            
+            # Update package list
+            apt-get update || true
+            ;;
+            
+        "centos"|"rhel"|"fedora")
+            log_info "Removing Node.js packages (CentOS/RHEL/Fedora)..."
+            
+            if command -v dnf >/dev/null 2>&1; then
+                dnf remove -y nodejs npm || true
+            else
+                yum remove -y nodejs npm || true
+            fi
+            
+            # Remove NodeSource repository
+            rm -f /etc/yum.repos.d/nodesource-*.repo || true
+            ;;
+            
+        *)
+            log_warning "Unknown OS type for Node.js removal: $os_type"
+            ;;
+    esac
+    
+    # Remove common Node.js directories and files
+    log_info "Cleaning up Node.js directories and files..."
+    
+    # Remove global npm modules and cache
+    rm -rf /usr/local/lib/node_modules || true
+    rm -rf /usr/local/bin/node || true
+    rm -rf /usr/local/bin/npm || true
+    rm -rf /usr/local/bin/npx || true
+    
+    # Remove user npm directories (if any)
+    rm -rf ~/.npm || true
+    rm -rf ~/.node-gyp || true
+    
+    # Remove any remaining Node.js binaries from common locations
+    rm -f /usr/bin/node || true
+    rm -f /usr/bin/npm || true
+    rm -f /usr/bin/npx || true
+    
+    # Clear any cached Node.js versions
+    NODEJS_CURRENT_VERSION=""
+    NPM_CURRENT_VERSION=""
+    
+    log_success "Old Node.js installation removed successfully"
+    return 0
+}
+
 # Install Node.js from NodeSource repository
 install_nodejs() {
     log_info "Installing Node.js..."
@@ -9489,8 +9561,12 @@ install_nodejs() {
             log_success "Node.js $NODEJS_CURRENT_VERSION is already installed and meets requirements"
             return 0
         else
-            log_warning "Node.js $NODEJS_CURRENT_VERSION is installed but does not meet minimum requirements"
-            log_info "Upgrading to latest LTS version..."
+            log_warning "Node.js $NODEJS_CURRENT_VERSION is installed but does not meet minimum requirements (need >= 20)"
+            log_info "Removing old Node.js installation and installing Node.js 20..."
+            if ! remove_old_nodejs_installation; then
+                log_error "Failed to remove old Node.js installation"
+                return $E_PACKAGE_INSTALL_FAILED
+            fi
         fi
     else
         log_info "Node.js not found, installing latest LTS version..."
@@ -9669,7 +9745,21 @@ loglevel=warn
 update-notifier=false
 fund=false
 audit-level=moderate
+cache=$app_dir/.npm
+tmp=$app_dir/.npm-tmp
+prefix=$app_dir/.npm-global
 EOF
+    
+    # Create npm directories
+    local npm_dirs=("$app_dir/.npm" "$app_dir/.npm-tmp" "$app_dir/.npm-global")
+    for dir in "${npm_dirs[@]}"; do
+        if ! mkdir -p "$dir"; then
+            log_warning "Failed to create npm directory: $dir"
+        else
+            chown "$service_user:$service_user" "$dir" || log_warning "Failed to set ownership for $dir"
+            chmod 755 "$dir" || log_warning "Failed to set permissions for $dir"
+        fi
+    done
     
     # Set ownership and permissions for .npmrc
     if ! chown "$service_user:$service_user" "$npmrc_file"; then
@@ -10080,7 +10170,7 @@ install_application_dependencies() {
     log_info "Installing Node.js dependencies..."
     start_spinner "Installing dependencies"
     
-    if ! sudo -u "$service_user" npm ci --only=production --no-audit --no-fund; then
+    if ! sudo -u "$service_user" HOME="$app_dir" npm ci --only=production --no-audit --no-fund --cache="$app_dir/.npm" --tmp="$app_dir/.npm-tmp"; then
         stop_spinner
         log_error "Failed to install Node.js dependencies"
         return 1
@@ -10100,7 +10190,7 @@ install_application_dependencies() {
         
         start_spinner "Installing web client dependencies"
         
-        if ! sudo -u "$service_user" npm ci --only=production --no-audit --no-fund; then
+        if ! sudo -u "$service_user" HOME="$app_dir" npm ci --only=production --no-audit --no-fund --cache="$app_dir/.npm" --tmp="$app_dir/.npm-tmp"; then
             stop_spinner
             log_error "Failed to install web client dependencies"
             return 1
@@ -18850,7 +18940,7 @@ generate_dockerfile() {
     
     cat > "$dockerfile" <<'EOF'
 # SeraphC2 Docker Image
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Set working directory
 WORKDIR /opt/seraphc2
