@@ -2560,7 +2560,7 @@ validate_script_integrity() {
     done
     
     # Check script size (should be reasonable for a setup script)
-    local script_size=$(wc -c < "$script_path" 2>/dev/null || echo "0")
+    local script_size=$(wc -c < "$script_path" 2>/dev/null || echo 0)
     if [[ $script_size -lt 10000 ]]; then
         log_warning "Script size seems too small: $script_size bytes"
         ((validation_errors++))
@@ -14462,47 +14462,51 @@ execute_main_installation() {
     CLEANUP_REQUIRED="true"
     
     # Step 1: Install dependencies (already implemented in previous tasks)
-    show_step 1 8 "Installing system dependencies"
-    # install_dependencies() # This would be called here when implemented
+    show_step 1 9 "Installing system dependencies"
+    install_and_configure_nodejs
     
     # Step 2: Setup database (already implemented in previous tasks)
-    show_step 2 8 "Setting up PostgreSQL database"
-    # setup_database() # This would be called here when implemented
+    show_step 2 9 "Setting up PostgreSQL database"
+    setup_postgresql_database
     
     # Step 3: Setup Redis (already implemented in previous tasks)
-    show_step 3 8 "Setting up Redis cache"
-    # setup_redis() # This would be called here when implemented
+    show_step 3 9 "Setting up Redis cache"
+    setup_redis_cache
     
     # Step 4: Setup SSL certificates (already implemented in previous tasks)
-    show_step 4 8 "Setting up SSL certificates"
-    # setup_ssl_certificates() # This would be called here when implemented
+    show_step 4 9 "Setting up SSL certificates"
+    setup_ssl_certificates
     
     # Step 5: Deploy application (already implemented in previous tasks)
-    show_step 5 8 "Deploying SeraphC2 application"
-    # deploy_seraphc2_application() # This would be called here when implemented
+    show_step 5 9 "Deploying SeraphC2 application"
+    deploy_seraphc2_application
     
     # Step 6: Configure system service (already implemented in previous tasks)
-    show_step 6 8 "Configuring system service"
-    # configure_seraphc2_service() # This would be called here when implemented
+    show_step 6 9 "Configuring system service"
+    configure_systemd_service
     
-    # Step 7: Configure firewall (THIS TASK - Task 14)
-    show_step 7 9 "Configuring firewall"
+    # Step 7: Initialize database schema
+    show_step 7 9 "Initializing database schema"
+    initialize_database_schema
+    
+    # Step 8: Configure firewall (THIS TASK - Task 14)
+    show_step 8 9 "Configuring firewall"
     configure_firewall
     
-    # Step 7.5: Apply security hardening (Task 19)
+    # Step 8.5: Apply security hardening (Task 19)
     if [[ "${CONFIG[enable_hardening]}" == "true" ]]; then
-        show_step 7.5 9 "Applying security hardening"
+        show_step 8.5 9 "Applying security hardening"
         apply_security_hardening
     fi
     
-    # Step 8: Setup backup and recovery system (Task 20)
+    # Step 9: Setup backup and recovery system (Task 20)
     if [[ "${CONFIG[skip_backup]}" != "true" ]]; then
-        show_step 8 9 "Setting up backup and recovery system"
+        show_step 9 9 "Setting up backup and recovery system"
         setup_backup_and_recovery_system
     fi
     
-    # Step 9: Validate installation (Task 15)
-    show_step 9 9 "Validating installation"
+    # Step 10: Validate installation (Task 15)
+    show_step 10 10 "Validating installation"
     validate_installation
     
     # Create uninstall script for future use (Task 17)
@@ -15268,7 +15272,7 @@ test_ssl_configuration() {
     
     if [[ -n "$expiry_date" ]]; then
         local expiry_epoch
-        expiry_epoch=$(date -d "$expiry_date" +%s 2>/dev/null || echo "0")
+        expiry_epoch=$(date -d "$expiry_date" +%s 2>/dev/null || echo 0)
         local current_epoch
         current_epoch=$(date +%s)
         local days_until_expiry=$(( (expiry_epoch - current_epoch) / 86400 ))
@@ -15761,7 +15765,7 @@ test_web_interface_responsiveness() {
         log_debug "Testing endpoint responsiveness: $url"
         
         local http_code
-        http_code=$(curl -o /dev/null -s -w "%{http_code}" -m 10 "$url" 2>/dev/null || echo "000")
+        http_code=$(curl -o /dev/null -s -w "%{http_code}" -m 10 "$url" 2>/dev/null || echo 000)
         
         case "$http_code" in
             200|301|302|401|403)
@@ -15999,7 +16003,7 @@ test_ssl_certificate_chain() {
     
     # Get certificate chain information
     local cert_chain
-    cert_chain=$(echo | openssl s_client -connect "$host:$port" -servername "$host" -showcerts 2>/dev/null | grep -c "BEGIN CERTIFICATE" || echo "0")
+    cert_chain=$(echo | openssl s_client -connect "$host:$port" -servername "$host" -showcerts 2>/dev/null | grep -c "BEGIN CERTIFICATE" || echo 0)
     
     if [[ "$cert_chain" -eq 0 ]]; then
         log_error "No certificates found in chain"
@@ -16296,7 +16300,7 @@ test_c2_core_functionality() {
     
     # Test HTTPS redirect (if configured)
     local https_redirect
-    https_redirect=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://localhost:$http_port/" 2>/dev/null || echo "000")
+    https_redirect=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://localhost:$http_port/" 2>/dev/null || echo 000)
     
     if [[ "$https_redirect" =~ ^30[12]$ ]]; then
         log_debug "HTTPS redirect is configured (HTTP $https_redirect)"
@@ -16341,7 +16345,7 @@ test_configuration_integrity() {
     
     # Check file permissions
     local env_perms
-    env_perms=$(stat -c "%a" "$env_file" 2>/dev/null || echo "000")
+    env_perms=$(stat -c "%a" "$env_file" 2>/dev/null || echo 000)
     
     if [[ "$env_perms" != "600" && "$env_perms" != "640" ]]; then
         log_warning "Environment file permissions may be too permissive: $env_perms"
@@ -16394,7 +16398,7 @@ test_system_resource_usage() {
         
         # Compare with number of CPU cores
         local cpu_cores
-        cpu_cores=$(nproc 2>/dev/null || echo "1")
+        cpu_cores=$(nproc 2>/dev/null || echo 1)
         
         if (( $(echo "$load_average > $cpu_cores * 2" | bc -l 2>/dev/null || echo 0) )); then
             log_warning "High system load: $load_average (${cpu_cores} cores)"
