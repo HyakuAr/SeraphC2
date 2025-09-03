@@ -11948,17 +11948,42 @@ initialize_postgresql_cluster() {
     
     case "$os_type" in
         ubuntu|debian)
-            postgresql_data_dir="/var/lib/postgresql/15/main"
+            # Detect the actual PostgreSQL version installed
+            local pg_version=$(sudo -u postgres psql --version 2>/dev/null | grep -oE '[0-9]+' | head -1)
+            if [[ -z "$pg_version" ]]; then
+                # Fallback: check for existing data directories
+                for version in 16 15 14 13 12; do
+                    if [[ -d "/var/lib/postgresql/$version/main" ]]; then
+                        pg_version="$version"
+                        break
+                    fi
+                done
+            fi
+            
+            if [[ -z "$pg_version" ]]; then
+                log_error "Could not detect PostgreSQL version"
+                return $E_DATABASE_ERROR
+            fi
+            
+            postgresql_data_dir="/var/lib/postgresql/$pg_version/main"
             postgresql_service="postgresql"
+            log_info "Detected PostgreSQL version: $pg_version"
+            log_info "Using data directory: $postgresql_data_dir"
             ;;
         centos|rhel|fedora)
-            postgresql_data_dir="/var/lib/pgsql/15/data"
-            postgresql_service="postgresql-15"
+            # Detect the actual PostgreSQL version installed
+            local pg_version=$(sudo -u postgres psql --version 2>/dev/null | grep -oE '[0-9]+' | head -1)
+            if [[ -z "$pg_version" ]]; then
+                pg_version="15"  # Default fallback
+            fi
+            
+            postgresql_data_dir="/var/lib/pgsql/$pg_version/data"
+            postgresql_service="postgresql-$pg_version"
             
             # Initialize database cluster for RHEL-based systems
             if [[ ! -d "$postgresql_data_dir" || ! -f "$postgresql_data_dir/PG_VERSION" ]]; then
                 log_info "Initializing PostgreSQL database cluster..."
-                if ! sudo -u postgres /usr/pgsql-15/bin/initdb -D "$postgresql_data_dir"; then
+                if ! sudo -u postgres /usr/pgsql-$pg_version/bin/initdb -D "$postgresql_data_dir"; then
                     log_error "Failed to initialize PostgreSQL database cluster"
                     return $E_DATABASE_ERROR
                 fi
