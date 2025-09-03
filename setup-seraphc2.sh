@@ -6100,7 +6100,33 @@ detect_operating_system() {
             ubuntu)
                 os_type="ubuntu"
                 os_version="$VERSION_ID"
-                os_codename="$VERSION_CODENAME"
+                os_codename="${VERSION_CODENAME:-}"
+                
+                # Fallback codename detection for Ubuntu if not available
+                if [[ -z "$os_codename" ]]; then
+                    case "$os_version" in
+                        "22.04") os_codename="jammy" ;;
+                        "20.04") os_codename="focal" ;;
+                        "18.04") os_codename="bionic" ;;
+                        "16.04") os_codename="xenial" ;;
+                        *) 
+                            # Try lsb_release as fallback
+                            if command -v lsb_release >/dev/null 2>&1; then
+                                os_codename=$(lsb_release -cs 2>/dev/null || echo "")
+                            fi
+                            # If still empty, default based on version
+                            if [[ -z "$os_codename" ]]; then
+                                if [[ "$os_version" =~ ^22\. ]]; then
+                                    os_codename="jammy"
+                                elif [[ "$os_version" =~ ^20\. ]]; then
+                                    os_codename="focal"
+                                else
+                                    os_codename="jammy"  # Default to latest LTS
+                                fi
+                            fi
+                            ;;
+                    esac
+                fi
                 ;;
             debian)
                 os_type="debian"
@@ -8383,44 +8409,82 @@ update_package_cache() {
 
 # Install a package using the appropriate package manager
 install_package() {
-    local package_name="$1"
+    local packages=("$@")
     local package_manager="${SYSTEM_INFO[package_manager]}"
     
-    if [[ -z "$package_name" ]]; then
-        log_error "Package name is required"
+    if [[ ${#packages[@]} -eq 0 ]]; then
+        log_error "At least one package name is required"
         return $E_VALIDATION_ERROR
     fi
     
-    log_debug "Installing package: $package_name using $package_manager"
-    
-    # Check if package is already installed
-    if is_package_installed "$package_name"; then
-        log_debug "Package $package_name is already installed"
-        return 0
+    # Handle single package case for backward compatibility
+    if [[ ${#packages[@]} -eq 1 ]]; then
+        local package_name="${packages[0]}"
+        log_debug "Installing package: $package_name using $package_manager"
+        
+        # Check if package is already installed
+        if is_package_installed "$package_name"; then
+            log_debug "Package $package_name is already installed"
+            return 0
+        fi
+        
+        # Track package for rollback
+        track_install_state "packages_installed" "$package_name"
+    else
+        # Handle multiple packages
+        log_debug "Installing ${#packages[@]} packages: ${packages[*]} using $package_manager"
+        
+        # Check which packages need installation
+        local packages_to_install=()
+        for package in "${packages[@]}"; do
+            if ! is_package_installed "$package"; then
+                packages_to_install+=("$package")
+                track_install_state "packages_installed" "$package"
+            else
+                log_debug "Package $package is already installed"
+            fi
+        done
+        
+        # If all packages are installed, return success
+        if [[ ${#packages_to_install[@]} -eq 0 ]]; then
+            log_debug "All packages are already installed"
+            return 0
+        fi
+        
+        packages=("${packages_to_install[@]}")
     fi
-    
-    # Track package for rollback
-    track_install_state "packages_installed" "$package_name"
     
     case "$package_manager" in
         apt)
-            log_info "Installing $package_name via APT..."
-            if ! DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$package_name"; then
-                log_error "Failed to install package: $package_name"
+            if [[ ${#packages[@]} -eq 1 ]]; then
+                log_info "Installing ${packages[0]} via APT..."
+            else
+                log_info "Installing ${#packages[@]} packages via APT: ${packages[*]}"
+            fi
+            if ! DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${packages[@]}"; then
+                log_error "Failed to install packages: ${packages[*]}"
                 return $E_PACKAGE_INSTALL_FAILED
             fi
             ;;
         yum)
-            log_info "Installing $package_name via YUM..."
-            if ! yum install -y -q "$package_name"; then
-                log_error "Failed to install package: $package_name"
+            if [[ ${#packages[@]} -eq 1 ]]; then
+                log_info "Installing ${packages[0]} via YUM..."
+            else
+                log_info "Installing ${#packages[@]} packages via YUM: ${packages[*]}"
+            fi
+            if ! yum install -y -q "${packages[@]}"; then
+                log_error "Failed to install packages: ${packages[*]}"
                 return $E_PACKAGE_INSTALL_FAILED
             fi
             ;;
         dnf)
-            log_info "Installing $package_name via DNF..."
-            if ! dnf install -y -q "$package_name"; then
-                log_error "Failed to install package: $package_name"
+            if [[ ${#packages[@]} -eq 1 ]]; then
+                log_info "Installing ${packages[0]} via DNF..."
+            else
+                log_info "Installing ${#packages[@]} packages via DNF: ${packages[*]}"
+            fi
+            if ! dnf install -y -q "${packages[@]}"; then
+                log_error "Failed to install packages: ${packages[*]}"
                 return $E_PACKAGE_INSTALL_FAILED
             fi
             ;;
@@ -8431,12 +8495,18 @@ install_package() {
     esac
     
     # Verify installation
-    if ! is_package_installed "$package_name"; then
-        log_error "Package installation verification failed: $package_name"
-        return $E_PACKAGE_INSTALL_FAILED
-    fi
+    for package in "${packages[@]}"; do
+        if ! is_package_installed "$package"; then
+            log_error "Package installation verification failed: $package"
+            return $E_PACKAGE_INSTALL_FAILED
+        fi
+    done
     
-    log_success "Successfully installed package: $package_name"
+    if [[ ${#packages[@]} -eq 1 ]]; then
+        log_success "Successfully installed package: ${packages[0]}"
+    else
+        log_success "Successfully installed ${#packages[@]} packages: ${packages[*]}"
+    fi
     return 0
 }
 
@@ -8459,6 +8529,29 @@ install_packages() {
     done
     
     log_success "All packages installed successfully"
+    return 0
+}
+
+# Install packages from array reference (for fallback scenarios)
+install_package_array() {
+    local -n package_array_ref=$1
+    local packages=("${package_array_ref[@]}")
+    
+    if [[ ${#packages[@]} -eq 0 ]]; then
+        log_debug "No packages in array"
+        return 1
+    fi
+    
+    log_debug "Attempting to install ${#packages[@]} packages from array..."
+    
+    for package in "${packages[@]}"; do
+        if ! install_package "$package"; then
+            log_debug "Failed to install package: $package"
+            return 1
+        fi
+    done
+    
+    log_debug "All packages from array installed successfully"
     return 0
 }
 
@@ -8637,18 +8730,76 @@ add_repository() {
                 postgresql)
                     # Add PostgreSQL official repository
                     log_info "Adding PostgreSQL official repository..."
-                    if ! install_package "wget"; then
+                    if ! install_package "wget" "gnupg"; then
                         return $E_PACKAGE_INSTALL_FAILED
                     fi
                     
-                    if ! wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -; then
+                    # Create keyrings directory if it doesn't exist
+                    mkdir -p /usr/share/keyrings
+                    
+                    # Download and add PostgreSQL GPG key using modern method
+                    if ! wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-archive-keyring.gpg; then
                         log_error "Failed to add PostgreSQL GPG key"
                         return $E_PACKAGE_INSTALL_FAILED
                     fi
                     
+                    # Detect codename and fallback to supported versions
                     local codename="${SYSTEM_INFO[os_codename]}"
-                    echo "deb http://apt.postgresql.org/pub/repos/apt/ $codename-pgdg main" > /etc/apt/sources.list.d/pgdg.list
-                    update_package_cache
+                    local os_version="${SYSTEM_INFO[os_version]}"
+                    
+                    # Map Ubuntu versions to supported PostgreSQL repository codenames
+                    case "$codename" in
+                        "jammy"|"")  # Ubuntu 22.04 or unknown
+                            if [[ "$os_version" =~ ^22\. ]]; then
+                                codename="jammy"
+                            elif [[ "$os_version" =~ ^20\. ]]; then
+                                codename="focal"
+                            elif [[ "$os_version" =~ ^18\. ]]; then
+                                codename="bionic"
+                            else
+                                # Default to jammy for newer versions
+                                codename="jammy"
+                            fi
+                            ;;
+                        "focal"|"bionic"|"xenial")
+                            # These are already supported
+                            ;;
+                        *)
+                            # For unknown codenames, try to map based on version
+                            if [[ "$os_version" =~ ^22\. ]]; then
+                                codename="jammy"
+                            elif [[ "$os_version" =~ ^20\. ]]; then
+                                codename="focal"
+                            elif [[ "$os_version" =~ ^18\. ]]; then
+                                codename="bionic"
+                            else
+                                codename="jammy"  # Default to latest supported
+                            fi
+                            ;;
+                    esac
+                    
+                    log_info "Using PostgreSQL repository for codename: $codename"
+                    
+                    # Add repository with signed-by option
+                    echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt/ $codename-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+                    
+                    # Update package cache
+                    if ! update_package_cache; then
+                        log_error "Failed to update package cache after adding PostgreSQL repository"
+                        # Try to remove the problematic repository and continue with system packages
+                        log_warning "Removing problematic PostgreSQL repository, will use system packages"
+                        rm -f /etc/apt/sources.list.d/pgdg.list
+                        rm -f /usr/share/keyrings/postgresql-archive-keyring.gpg
+                        update_package_cache || true
+                        return $E_PACKAGE_INSTALL_FAILED
+                    fi
+                    
+                    # Validate that PostgreSQL packages are available
+                    if ! apt-cache search postgresql-15 | grep -q "postgresql-15"; then
+                        log_warning "PostgreSQL 15 not available in repository, will try fallback versions"
+                    fi
+                    
+                    log_success "Successfully added repository: postgresql"
                     ;;
                 *)
                     log_error "Unsupported repository for APT: $repo_identifier"
@@ -10634,31 +10785,76 @@ install_postgresql() {
     fi
     
     # Add PostgreSQL official repository if not already added
+    local use_official_repo=true
     if ! is_repository_added "postgresql"; then
         log_info "Adding PostgreSQL official repository..."
         if ! add_repository "postgresql"; then
-            log_error "Failed to add PostgreSQL repository"
-            return $E_PACKAGE_INSTALL_FAILED
+            log_warning "Failed to add PostgreSQL official repository, will use system packages"
+            use_official_repo=false
         fi
     fi
     
     # Install PostgreSQL packages based on distribution
     case "$os_type" in
         ubuntu|debian)
-            local packages=(
-                "postgresql-15"
-                "postgresql-client-15"
-                "postgresql-contrib-15"
-                "postgresql-server-dev-15"
+            if [[ "$use_official_repo" == "true" ]]; then
+                # Try PostgreSQL 15 first, then fallback to available versions
+                local preferred_packages=(
+                    "postgresql-15"
+                    "postgresql-client-15"
+                    "postgresql-contrib-15"
+                    "postgresql-server-dev-15"
+                    "libpq-dev"
+                )
+                
+                local fallback_packages=(
+                    "postgresql-14"
+                    "postgresql-client-14"
+                    "postgresql-contrib-14"
+                    "postgresql-server-dev-14"
+                    "libpq-dev"
+                )
+            else
+                # Use system packages only
+                local preferred_packages=()
+                local fallback_packages=()
+            fi
+            
+            local final_fallback_packages=(
+                "postgresql"
+                "postgresql-client"
+                "postgresql-contrib"
+                "postgresql-server-dev-all"
                 "libpq-dev"
             )
             ;;
         centos|rhel|fedora)
-            local packages=(
-                "postgresql15-server"
-                "postgresql15"
-                "postgresql15-contrib"
-                "postgresql15-devel"
+            if [[ "$use_official_repo" == "true" ]]; then
+                local preferred_packages=(
+                    "postgresql15-server"
+                    "postgresql15"
+                    "postgresql15-contrib"
+                    "postgresql15-devel"
+                    "libpq-devel"
+                )
+                
+                local fallback_packages=(
+                    "postgresql14-server"
+                    "postgresql14"
+                    "postgresql14-contrib"
+                    "postgresql14-devel"
+                    "libpq-devel"
+                )
+            else
+                local preferred_packages=()
+                local fallback_packages=()
+            fi
+            
+            local final_fallback_packages=(
+                "postgresql-server"
+                "postgresql"
+                "postgresql-contrib"
+                "postgresql-devel"
                 "libpq-devel"
             )
             ;;
@@ -10668,13 +10864,47 @@ install_postgresql() {
             ;;
     esac
     
-    # Install packages
-    for package in "${packages[@]}"; do
-        log_info "Installing package: $package"
-        if ! install_package "$package"; then
-            log_error "Failed to install PostgreSQL package: $package"
-            return $E_PACKAGE_INSTALL_FAILED
+    # Try to install packages with fallback versions
+    local packages_to_install=()
+    local installation_successful=false
+    
+    # Try preferred packages first (if available)
+    if [[ ${#preferred_packages[@]} -gt 0 ]]; then
+        log_info "Attempting to install PostgreSQL 15..."
+        if install_package_array preferred_packages[@]; then
+            packages_to_install=("${preferred_packages[@]}")
+            installation_successful=true
+            log_success "PostgreSQL 15 packages installed successfully"
         fi
+    fi
+    
+    # Try fallback packages if preferred failed (if available)
+    if [[ "$installation_successful" != "true" && ${#fallback_packages[@]} -gt 0 ]]; then
+        log_warning "PostgreSQL 15 not available, trying PostgreSQL 14..."
+        if install_package_array fallback_packages[@]; then
+            packages_to_install=("${fallback_packages[@]}")
+            installation_successful=true
+            log_success "PostgreSQL 14 packages installed successfully"
+        fi
+    fi
+    
+    # Try final fallback (system packages)
+    if [[ "$installation_successful" != "true" ]]; then
+        log_warning "Specific PostgreSQL versions not available, trying default packages..."
+        if install_package_array final_fallback_packages[@]; then
+            packages_to_install=("${final_fallback_packages[@]}")
+            installation_successful=true
+            log_success "Default PostgreSQL packages installed successfully"
+        fi
+    fi
+    
+    if [[ "$installation_successful" != "true" ]]; then
+        log_error "Failed to install any PostgreSQL packages"
+        return $E_PACKAGE_INSTALL_FAILED
+    fi
+    
+    # Track installed packages
+    for package in "${packages_to_install[@]}"; do
         track_install_state "packages_installed" "$package"
     done
     
