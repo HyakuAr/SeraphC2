@@ -18,10 +18,11 @@ SeraphC2 is an advanced Command and Control (C2) framework designed for Windows 
 
 ### Prerequisites
 
+- **Supported Operating System** (see [Compatibility](#compatibility) section)
 - Node.js 18+ and npm
-- PostgreSQL 13+
-- Redis 6+
-- Docker and Docker Compose (optional)
+- PostgreSQL 13+ (automatically installed by setup script)
+- Redis 6+ (automatically installed by setup script)
+- Docker and Docker Compose (optional, for containerized deployment)
 
 ### Installation
 
@@ -52,7 +53,128 @@ npm run build
 npm start
 ```
 
+## Compatibility
+
+### Supported Operating Systems
+
+SeraphC2 requires **PostgreSQL 13+** which limits compatibility to newer operating system versions. The following operating systems are officially supported:
+
+#### Ubuntu
+- ✅ **Ubuntu 22.04 LTS (Jammy)** - Recommended
+- ✅ **Ubuntu 24.04 LTS (Noble)** - Latest LTS
+- ❌ **Ubuntu 20.04 LTS (Focal)** - Only provides PostgreSQL 12
+- ❌ **Ubuntu 18.04 LTS (Bionic)** - End of standard support
+
+#### Debian
+- ✅ **Debian 12 (Bookworm)** - Latest stable
+- ✅ **Debian 11 (Bullseye)** - Previous stable
+- ❌ **Debian 10 (Buster)** - Only provides PostgreSQL 11
+
+#### Red Hat Enterprise Linux (RHEL)
+- ✅ **RHEL 9** - Latest
+- ✅ **RHEL 8** - Supported
+- ❌ **RHEL 7** - End of life, limited PostgreSQL 13+ support
+
+#### CentOS / Rocky Linux / AlmaLinux
+- ✅ **Rocky Linux 9** - Recommended RHEL alternative
+- ✅ **Rocky Linux 8** - Supported
+- ✅ **AlmaLinux 9** - Recommended RHEL alternative
+- ✅ **AlmaLinux 8** - Supported
+- ❌ **CentOS 7** - End of life
+- ❌ **CentOS 8** - End of life (use Rocky/Alma instead)
+
+#### Fedora
+- ✅ **Fedora 39** - Latest
+- ✅ **Fedora 38** - Supported
+- ✅ **Fedora 37** - Supported
+- ✅ **Fedora 36** - Supported
+- ✅ **Fedora 35** - Minimum supported
+- ❌ **Fedora 34 and older** - PostgreSQL 13+ not available
+
+### System Requirements
+
+#### Minimum Requirements
+- **CPU**: 2 cores
+- **RAM**: 4GB
+- **Storage**: 20GB free space
+- **Network**: Internet connection for installation
+
+#### Recommended Requirements
+- **CPU**: 4+ cores
+- **RAM**: 8GB+
+- **Storage**: 50GB+ SSD
+- **Network**: Stable internet connection
+
+### Database Requirements
+
+- **PostgreSQL**: Version 13 or higher (required)
+- **Redis**: Version 6 or higher (required)
+
+### Node.js Requirements
+
+- **Node.js**: Version 18 or higher
+- **npm**: Version 8 or higher (comes with Node.js 18+)
+
+### Migration from Unsupported Systems
+
+If you're currently running an unsupported operating system, here are the recommended upgrade paths:
+
+#### From Ubuntu 20.04
+```bash
+# Upgrade to Ubuntu 22.04 LTS
+sudo do-release-upgrade
+```
+
+#### From Ubuntu 18.04
+```bash
+# Upgrade to Ubuntu 20.04 first, then to 22.04
+sudo do-release-upgrade
+# Then upgrade again to 22.04
+sudo do-release-upgrade
+```
+
+#### From CentOS 7/8
+```bash
+# Migrate to Rocky Linux 9 (recommended)
+# Follow Rocky Linux migration guide:
+# https://docs.rockylinux.org/guides/migrate2rocky/
+```
+
+#### From Debian 10
+```bash
+# Upgrade to Debian 11
+sudo apt update && sudo apt upgrade
+sudo sed -i 's/buster/bullseye/g' /etc/apt/sources.list
+sudo apt update && sudo apt full-upgrade
+```
+
+### Compatibility Check
+
+The SeraphC2 setup script automatically validates OS compatibility before installation:
+
+```bash
+# The script will check your OS and stop if incompatible
+sudo ./setup-seraphc2.sh
+```
+
+If your OS is incompatible, you'll see a detailed error message with upgrade recommendations.
+
+For detailed compatibility information, migration guides, and troubleshooting, see [COMPATIBILITY.md](COMPATIBILITY.md).
+
+### Docker Alternative
+
+For unsupported systems, you can use Docker to run SeraphC2:
+
+```bash
+# Use Docker on any system with Docker support
+docker-compose up -d
+```
+
+This bypasses OS-level PostgreSQL requirements by running everything in containers.
+
 ### Development
+
+Start development server with hot reload:
 
 Start development server with hot reload:
 ```bash

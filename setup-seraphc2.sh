@@ -8260,6 +8260,177 @@ get_port_process_info() {
     echo "$process_info"
 }
 
+# Validate PostgreSQL compatibility for the current OS
+validate_postgresql_compatibility() {
+    log_info "Validating PostgreSQL compatibility for current OS..."
+    
+    local os_type="${SYSTEM_INFO[os_type]}"
+    local os_version="${SYSTEM_INFO[os_version]}"
+    local os_codename="${SYSTEM_INFO[os_codename]}"
+    local required_pg_version="13"
+    
+    local compatible=true
+    local reason=""
+    local recommendation=""
+    
+    case "$os_type" in
+        ubuntu)
+            case "$os_version" in
+                "18.04"|"18."*)
+                    compatible=false
+                    reason="Ubuntu 18.04 has reached end of standard support and PostgreSQL $required_pg_version+ is not available"
+                    recommendation="Upgrade to Ubuntu 20.04 LTS or newer"
+                    ;;
+                "20.04"|"20."*)
+                    compatible=false
+                    reason="Ubuntu 20.04 only provides PostgreSQL 12, but SeraphC2 requires PostgreSQL $required_pg_version+"
+                    recommendation="Upgrade to Ubuntu 22.04 LTS or newer for PostgreSQL $required_pg_version+ support"
+                    ;;
+                "22.04"|"22."*|"24.04"|"24."*)
+                    compatible=true
+                    log_success "Ubuntu $os_version supports PostgreSQL $required_pg_version+"
+                    ;;
+                *)
+                    # For newer versions, assume compatibility
+                    if [[ "${os_version%%.*}" -ge 22 ]]; then
+                        compatible=true
+                        log_success "Ubuntu $os_version should support PostgreSQL $required_pg_version+"
+                    else
+                        compatible=false
+                        reason="Ubuntu $os_version is not tested and may not support PostgreSQL $required_pg_version+"
+                        recommendation="Use Ubuntu 22.04 LTS or newer"
+                    fi
+                    ;;
+            esac
+            ;;
+        debian)
+            case "$os_version" in
+                "10"|"10."*)
+                    compatible=false
+                    reason="Debian 10 (Buster) only provides PostgreSQL 11, but SeraphC2 requires PostgreSQL $required_pg_version+"
+                    recommendation="Upgrade to Debian 11 (Bullseye) or newer"
+                    ;;
+                "11"|"11."*|"12"|"12."*)
+                    compatible=true
+                    log_success "Debian $os_version supports PostgreSQL $required_pg_version+"
+                    ;;
+                *)
+                    # For newer versions, assume compatibility
+                    if [[ "${os_version%%.*}" -ge 11 ]]; then
+                        compatible=true
+                        log_success "Debian $os_version should support PostgreSQL $required_pg_version+"
+                    else
+                        compatible=false
+                        reason="Debian $os_version is too old and does not support PostgreSQL $required_pg_version+"
+                        recommendation="Upgrade to Debian 11 (Bullseye) or newer"
+                    fi
+                    ;;
+            esac
+            ;;
+        centos)
+            case "$os_version" in
+                "7"|"7."*)
+                    compatible=false
+                    reason="CentOS 7 has reached end of life and PostgreSQL $required_pg_version+ support is limited"
+                    recommendation="Upgrade to Rocky Linux 8/9 or AlmaLinux 8/9"
+                    ;;
+                "8"|"8."*|"9"|"9."*)
+                    compatible=true
+                    log_success "CentOS $os_version supports PostgreSQL $required_pg_version+"
+                    ;;
+                *)
+                    if [[ "${os_version%%.*}" -ge 8 ]]; then
+                        compatible=true
+                        log_success "CentOS $os_version should support PostgreSQL $required_pg_version+"
+                    else
+                        compatible=false
+                        reason="CentOS $os_version is too old and does not support PostgreSQL $required_pg_version+"
+                        recommendation="Upgrade to CentOS 8+ or Rocky Linux 8/9"
+                    fi
+                    ;;
+            esac
+            ;;
+        rhel)
+            case "$os_version" in
+                "7"|"7."*)
+                    compatible=false
+                    reason="RHEL 7 is approaching end of life and PostgreSQL $required_pg_version+ support is limited"
+                    recommendation="Upgrade to RHEL 8 or newer"
+                    ;;
+                "8"|"8."*|"9"|"9."*)
+                    compatible=true
+                    log_success "RHEL $os_version supports PostgreSQL $required_pg_version+"
+                    ;;
+                *)
+                    if [[ "${os_version%%.*}" -ge 8 ]]; then
+                        compatible=true
+                        log_success "RHEL $os_version should support PostgreSQL $required_pg_version+"
+                    else
+                        compatible=false
+                        reason="RHEL $os_version is too old and does not support PostgreSQL $required_pg_version+"
+                        recommendation="Upgrade to RHEL 8 or newer"
+                    fi
+                    ;;
+            esac
+            ;;
+        fedora)
+            case "$os_version" in
+                "35"|"36"|"37"|"38"|"39"|"40")
+                    compatible=true
+                    log_success "Fedora $os_version supports PostgreSQL $required_pg_version+"
+                    ;;
+                *)
+                    if [[ "${os_version}" -ge 35 ]]; then
+                        compatible=true
+                        log_success "Fedora $os_version should support PostgreSQL $required_pg_version+"
+                    else
+                        compatible=false
+                        reason="Fedora $os_version is too old and may not support PostgreSQL $required_pg_version+"
+                        recommendation="Upgrade to Fedora 35 or newer"
+                    fi
+                    ;;
+            esac
+            ;;
+        *)
+            log_warning "Unknown operating system: $os_type $os_version"
+            log_warning "PostgreSQL $required_pg_version+ compatibility cannot be verified"
+            log_warning "Installation may fail if PostgreSQL $required_pg_version+ is not available"
+            return 0  # Continue with installation attempt
+            ;;
+    esac
+    
+    if [[ "$compatible" != "true" ]]; then
+        echo ""
+        log_error "═══════════════════════════════════════════════════════════════"
+        log_error "                INCOMPATIBLE OPERATING SYSTEM                 "
+        log_error "═══════════════════════════════════════════════════════════════"
+        log_error ""
+        log_error "Current OS: $os_type $os_version"
+        log_error "Reason: $reason"
+        log_error ""
+        log_error "SeraphC2 requires PostgreSQL $required_pg_version or higher, which is not"
+        log_error "available or supported on your current operating system."
+        log_error ""
+        log_error "RECOMMENDATION: $recommendation"
+        log_error ""
+        log_error "Supported Operating Systems:"
+        log_error "  • Ubuntu 22.04 LTS (Jammy) or newer"
+        log_error "  • Debian 11 (Bullseye) or newer"
+        log_error "  • CentOS 8+ / Rocky Linux 8+ / AlmaLinux 8+"
+        log_error "  • RHEL 8 or newer"
+        log_error "  • Fedora 35 or newer"
+        log_error ""
+        log_error "For the complete compatibility matrix, see:"
+        log_error "https://github.com/yourusername/SeraphC2/blob/main/README.md#compatibility"
+        log_error ""
+        log_error "═══════════════════════════════════════════════════════════════"
+        
+        exit $E_UNSUPPORTED_OS
+    fi
+    
+    log_success "PostgreSQL compatibility validation passed"
+}
+
 # Main system detection and prerequisites checking function
 check_system_prerequisites() {
     log_info "Checking system prerequisites..."
@@ -8278,6 +8449,9 @@ check_system_prerequisites() {
     # Validate system support and requirements
     validate_os_support
     validate_system_requirements
+    
+    # Check PostgreSQL compatibility for this OS
+    validate_postgresql_compatibility
     
     # Check network and port availability
     check_network_connectivity
@@ -8454,45 +8628,92 @@ install_package() {
         packages=("${packages_to_install[@]}")
     fi
     
-    case "$package_manager" in
-        apt)
-            if [[ ${#packages[@]} -eq 1 ]]; then
-                log_info "Installing ${packages[0]} via APT..."
-            else
-                log_info "Installing ${#packages[@]} packages via APT: ${packages[*]}"
-            fi
-            if ! DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${packages[@]}"; then
-                log_error "Failed to install packages: ${packages[*]}"
+    # Install packages with timeout and retry logic
+    local install_success=false
+    local retry_count=0
+    local max_retries=2
+    
+    while [[ $retry_count -le $max_retries ]] && [[ "$install_success" == "false" ]]; do
+        case "$package_manager" in
+            apt)
+                if [[ ${#packages[@]} -eq 1 ]]; then
+                    log_info "Installing ${packages[0]} via APT..."
+                else
+                    log_info "Installing ${#packages[@]} packages via APT: ${packages[*]}"
+                fi
+                
+                if [[ $retry_count -gt 0 ]]; then
+                    log_info "Retry attempt $retry_count/$max_retries"
+                    # Update package cache on retry
+                    timeout 60 apt-get update -qq 2>/dev/null || true
+                fi
+                
+                if timeout 300 bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' '${packages[@]}'"; then
+                    install_success=true
+                else
+                    log_warning "APT installation failed (attempt $((retry_count + 1))/$((max_retries + 1)))"
+                fi
+                ;;
+            yum)
+                if [[ ${#packages[@]} -eq 1 ]]; then
+                    log_info "Installing ${packages[0]} via YUM..."
+                else
+                    log_info "Installing ${#packages[@]} packages via YUM: ${packages[*]}"
+                fi
+                
+                if [[ $retry_count -gt 0 ]]; then
+                    log_info "Retry attempt $retry_count/$max_retries"
+                    yum clean expire-cache 2>/dev/null || true
+                fi
+                
+                if timeout 300 yum install -y "${packages[@]}"; then
+                    install_success=true
+                else
+                    log_warning "YUM installation failed (attempt $((retry_count + 1))/$((max_retries + 1)))"
+                fi
+                ;;
+            dnf)
+                if [[ ${#packages[@]} -eq 1 ]]; then
+                    log_info "Installing ${packages[0]} via DNF..."
+                else
+                    log_info "Installing ${#packages[@]} packages via DNF: ${packages[*]}"
+                fi
+                
+                if [[ $retry_count -gt 0 ]]; then
+                    log_info "Retry attempt $retry_count/$max_retries"
+                    dnf clean expire-cache 2>/dev/null || true
+                fi
+                
+                if timeout 300 dnf install -y "${packages[@]}"; then
+                    install_success=true
+                else
+                    log_warning "DNF installation failed (attempt $((retry_count + 1))/$((max_retries + 1)))"
+                fi
+                ;;
+            *)
+                log_error "Unsupported package manager: $package_manager"
                 return $E_PACKAGE_INSTALL_FAILED
+                ;;
+        esac
+        
+        if [[ "$install_success" == "false" ]]; then
+            ((retry_count++))
+            if [[ $retry_count -le $max_retries ]]; then
+                log_info "Waiting 5 seconds before retry..."
+                sleep 5
             fi
-            ;;
-        yum)
-            if [[ ${#packages[@]} -eq 1 ]]; then
-                log_info "Installing ${packages[0]} via YUM..."
-            else
-                log_info "Installing ${#packages[@]} packages via YUM: ${packages[*]}"
-            fi
-            if ! yum install -y -q "${packages[@]}"; then
-                log_error "Failed to install packages: ${packages[*]}"
-                return $E_PACKAGE_INSTALL_FAILED
-            fi
-            ;;
-        dnf)
-            if [[ ${#packages[@]} -eq 1 ]]; then
-                log_info "Installing ${packages[0]} via DNF..."
-            else
-                log_info "Installing ${#packages[@]} packages via DNF: ${packages[*]}"
-            fi
-            if ! dnf install -y -q "${packages[@]}"; then
-                log_error "Failed to install packages: ${packages[*]}"
-                return $E_PACKAGE_INSTALL_FAILED
-            fi
-            ;;
-        *)
-            log_error "Unsupported package manager: $package_manager"
-            return $E_PACKAGE_INSTALL_FAILED
-            ;;
-    esac
+        fi
+    done
+    
+    if [[ "$install_success" == "false" ]]; then
+        log_error "Failed to install packages after $((max_retries + 1)) attempts: ${packages[*]}"
+        log_info "This may be due to:"
+        log_info "  - Network connectivity issues"
+        log_info "  - Repository server problems"
+        log_info "  - Package conflicts or dependencies"
+        log_info "  - Insufficient disk space"
+        return $E_PACKAGE_INSTALL_FAILED
+    fi
     
     # Verify installation
     for package in "${packages[@]}"; do
@@ -8728,78 +8949,177 @@ add_repository() {
                     fi
                     ;;
                 postgresql)
-                    # Add PostgreSQL official repository
+                    # Add PostgreSQL official repository with comprehensive error handling
                     log_info "Adding PostgreSQL official repository..."
-                    if ! install_package "wget" "gnupg"; then
+                    
+                    # Clean up any existing problematic configurations first
+                    rm -f /etc/apt/sources.list.d/pgdg.list 2>/dev/null || true
+                    rm -f /usr/share/keyrings/postgresql-archive-keyring.gpg 2>/dev/null || true
+                    
+                    # Clean up deprecated apt-key entries
+                    if command -v apt-key >/dev/null 2>&1 && apt-key list 2>/dev/null | grep -qi postgresql; then
+                        log_info "Removing deprecated PostgreSQL GPG keys..."
+                        apt-key del ACCC4CF8 2>/dev/null || true
+                    fi
+                    
+                    # Install required dependencies with error handling
+                    if ! install_package "wget" "gnupg" "lsb-release" "ca-certificates"; then
+                        log_warning "Failed to install repository dependencies, will use system packages"
                         return $E_PACKAGE_INSTALL_FAILED
                     fi
                     
-                    # Create keyrings directory if it doesn't exist
+                    # Create keyrings directory
                     mkdir -p /usr/share/keyrings
                     
-                    # Download and add PostgreSQL GPG key using modern method
-                    if ! wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-archive-keyring.gpg; then
-                        log_error "Failed to add PostgreSQL GPG key"
+                    # Download PostgreSQL GPG key with timeout and retries
+                    log_info "Downloading PostgreSQL GPG key..."
+                    local gpg_success=false
+                    local retry_count=0
+                    local max_retries=3
+                    
+                    while [[ $retry_count -lt $max_retries ]] && [[ "$gpg_success" == "false" ]]; do
+                        if timeout 30 wget --quiet --tries=2 --connect-timeout=10 --read-timeout=20 \
+                           -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | \
+                           gpg --dearmor -o /usr/share/keyrings/postgresql-archive-keyring.gpg 2>/dev/null; then
+                            gpg_success=true
+                            log_success "PostgreSQL GPG key downloaded successfully"
+                        else
+                            ((retry_count++))
+                            log_warning "GPG key download failed (attempt $retry_count/$max_retries)"
+                            if [[ $retry_count -lt $max_retries ]]; then
+                                log_info "Retrying in 3 seconds..."
+                                sleep 3
+                            fi
+                        fi
+                    done
+                    
+                    if [[ "$gpg_success" == "false" ]]; then
+                        log_warning "Failed to download PostgreSQL GPG key after $max_retries attempts"
+                        log_info "This may be due to network issues or firewall restrictions"
                         return $E_PACKAGE_INSTALL_FAILED
                     fi
                     
-                    # Detect codename and fallback to supported versions
+                    # Enhanced codename detection with comprehensive fallbacks
                     local codename="${SYSTEM_INFO[os_codename]}"
                     local os_version="${SYSTEM_INFO[os_version]}"
+                    local os_id="${SYSTEM_INFO[os_type]}"
                     
-                    # Map Ubuntu versions to supported PostgreSQL repository codenames
+                    # Detect codename with multiple fallback strategies
+                    if [[ -z "$codename" ]] || [[ "$codename" == "n/a" ]] || [[ "$codename" == "unknown" ]]; then
+                        log_info "Codename not detected, using version-based mapping..."
+                        
+                        # Try to get codename from lsb_release if available
+                        if command -v lsb_release >/dev/null 2>&1; then
+                            codename=$(lsb_release -cs 2>/dev/null || echo "")
+                        fi
+                        
+                        # If still empty, map based on version
+                        if [[ -z "$codename" ]]; then
+                            case "$os_version" in
+                                "24.04"|"24."*) codename="jammy" ;;  # Use jammy for 24.04 until noble is supported
+                                "22.04"|"22."*) codename="jammy" ;;
+                                "20.04"|"20."*) codename="focal" ;;
+                                "18.04"|"18."*) codename="bionic" ;;
+                                "16.04"|"16."*) codename="xenial" ;;
+                                *) 
+                                    log_warning "Unknown version: $os_version, using focal as safe fallback"
+                                    codename="focal"
+                                    ;;
+                            esac
+                        fi
+                    fi
+                    
+                    # Validate and normalize codename
                     case "$codename" in
-                        "jammy"|"")  # Ubuntu 22.04 or unknown
-                            if [[ "$os_version" =~ ^22\. ]]; then
-                                codename="jammy"
-                            elif [[ "$os_version" =~ ^20\. ]]; then
-                                codename="focal"
-                            elif [[ "$os_version" =~ ^18\. ]]; then
-                                codename="bionic"
-                            else
-                                # Default to jammy for newer versions
-                                codename="jammy"
-                            fi
+                        "jammy"|"focal"|"bionic"|"xenial")
+                            log_info "Using supported codename: $codename"
                             ;;
-                        "focal"|"bionic"|"xenial")
-                            # These are already supported
+                        "noble"|"mantic"|"lunar"|"kinetic")
+                            log_warning "Newer Ubuntu release ($codename) detected, falling back to jammy"
+                            codename="jammy"
                             ;;
                         *)
-                            # For unknown codenames, try to map based on version
-                            if [[ "$os_version" =~ ^22\. ]]; then
-                                codename="jammy"
-                            elif [[ "$os_version" =~ ^20\. ]]; then
-                                codename="focal"
-                            elif [[ "$os_version" =~ ^18\. ]]; then
-                                codename="bionic"
-                            else
-                                codename="jammy"  # Default to latest supported
-                            fi
+                            log_warning "Unsupported or unknown codename: $codename, falling back to focal"
+                            codename="focal"
                             ;;
                     esac
                     
                     log_info "Using PostgreSQL repository for codename: $codename"
                     
-                    # Add repository with signed-by option
-                    echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt/ $codename-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+                    # Create repository configuration with signed-by option
+                    local repo_line="deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt/ $codename-pgdg main"
+                    echo "$repo_line" > /etc/apt/sources.list.d/pgdg.list
                     
-                    # Update package cache
-                    if ! update_package_cache; then
-                        log_error "Failed to update package cache after adding PostgreSQL repository"
-                        # Try to remove the problematic repository and continue with system packages
-                        log_warning "Removing problematic PostgreSQL repository, will use system packages"
-                        rm -f /etc/apt/sources.list.d/pgdg.list
-                        rm -f /usr/share/keyrings/postgresql-archive-keyring.gpg
-                        update_package_cache || true
+                    # Update package cache with timeout and comprehensive error handling
+                    log_info "Updating package cache with PostgreSQL repository..."
+                    local cache_update_success=false
+                    retry_count=0
+                    max_retries=3
+                    
+                    while [[ $retry_count -lt $max_retries ]] && [[ "$cache_update_success" == "false" ]]; do
+                        if timeout 120 apt-get update -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 2>/dev/null; then
+                            cache_update_success=true
+                            log_success "Package cache updated successfully"
+                        else
+                            ((retry_count++))
+                            log_warning "Package cache update failed (attempt $retry_count/$max_retries)"
+                            if [[ $retry_count -lt $max_retries ]]; then
+                                log_info "Retrying in 5 seconds..."
+                                sleep 5
+                            fi
+                        fi
+                    done
+                    
+                    if [[ "$cache_update_success" == "false" ]]; then
+                        log_warning "Failed to update package cache with PostgreSQL repository"
+                        log_info "This may be due to:"
+                        log_info "  - Network connectivity issues"
+                        log_info "  - Repository server problems"
+                        log_info "  - Firewall blocking repository access"
+                        log_info "  - Unsupported OS version for this repository"
+                        log_info "Removing problematic repository and falling back to system packages..."
+                        
+                        # Clean up failed repository configuration
+                        rm -f /etc/apt/sources.list.d/pgdg.list 2>/dev/null || true
+                        rm -f /usr/share/keyrings/postgresql-archive-keyring.gpg 2>/dev/null || true
+                        
+                        # Try to restore package cache to working state
+                        timeout 60 apt-get update 2>/dev/null || true
+                        
                         return $E_PACKAGE_INSTALL_FAILED
                     fi
                     
-                    # Validate that PostgreSQL packages are available
-                    if ! apt-cache search postgresql-15 | grep -q "postgresql-15"; then
-                        log_warning "PostgreSQL 15 not available in repository, will try fallback versions"
+                    # Validate that PostgreSQL packages are actually available
+                    log_info "Validating PostgreSQL package availability..."
+                    local packages_available=false
+                    
+                    if apt-cache search postgresql-15 2>/dev/null | grep -q "postgresql-15 "; then
+                        log_info "PostgreSQL 15 is available in repository"
+                        packages_available=true
+                    elif apt-cache search postgresql-14 2>/dev/null | grep -q "postgresql-14 "; then
+                        log_info "PostgreSQL 14 is available in repository"
+                        packages_available=true
+                    elif apt-cache search postgresql-13 2>/dev/null | grep -q "postgresql-13 "; then
+                        log_info "PostgreSQL 13 is available in repository"
+                        packages_available=true
+                    else
+                        log_warning "No specific PostgreSQL versions found in repository"
+                        # Check if generic postgresql package is available
+                        if apt-cache search "^postgresql$" 2>/dev/null | grep -q "postgresql "; then
+                            log_info "Generic PostgreSQL package is available"
+                            packages_available=true
+                        fi
                     fi
                     
-                    log_success "Successfully added repository: postgresql"
+                    if [[ "$packages_available" == "false" ]]; then
+                        log_warning "No PostgreSQL packages found in repository, removing it"
+                        rm -f /etc/apt/sources.list.d/pgdg.list 2>/dev/null || true
+                        rm -f /usr/share/keyrings/postgresql-archive-keyring.gpg 2>/dev/null || true
+                        timeout 60 apt-get update 2>/dev/null || true
+                        return $E_PACKAGE_INSTALL_FAILED
+                    fi
+                    
+                    log_success "PostgreSQL repository added and validated successfully"
                     ;;
                 *)
                     log_error "Unsupported repository for APT: $repo_identifier"
@@ -10770,11 +11090,23 @@ recover_postgresql_installation() {
     local os_type="${SYSTEM_INFO[os_type]}"
     local package_manager="${SYSTEM_INFO[package_manager]}"
     
-    # Only support recovery for apt-based systems for now
-    if [[ "$package_manager" != "apt" ]]; then
-        log_error "PostgreSQL installation recovery is only supported on apt-based systems"
-        return $E_PACKAGE_INSTALL_FAILED
-    fi
+    # Support recovery for different package managers
+    case "$package_manager" in
+        apt)
+            recover_postgresql_apt
+            ;;
+        yum|dnf)
+            recover_postgresql_rpm
+            ;;
+        *)
+            log_error "PostgreSQL installation recovery is not supported for package manager: $package_manager"
+            return $E_PACKAGE_INSTALL_FAILED
+            ;;
+    esac
+}
+
+# Recovery function for APT-based systems (Ubuntu/Debian)
+recover_postgresql_apt() {
     
     log_info "Step 1: Cleaning up problematic repository configurations..."
     
@@ -10791,18 +11123,18 @@ recover_postgresql_installation() {
     fi
     
     # Clean up any old apt-key entries (deprecated method)
-    if apt-key list 2>/dev/null | grep -qi postgresql; then
+    if command -v apt-key >/dev/null 2>&1 && apt-key list 2>/dev/null | grep -qi postgresql; then
         log_info "Removing old PostgreSQL GPG keys from apt-key..."
         apt-key del ACCC4CF8 2>/dev/null || true
     fi
     
     log_info "Step 2: Updating package cache after cleanup..."
-    if ! update_package_cache; then
-        log_warning "Failed to update package cache after cleanup"
+    if ! timeout 60 apt-get update 2>/dev/null; then
+        log_warning "Failed to update package cache after cleanup, continuing anyway"
     fi
     
     log_info "Step 3: Installing required dependencies..."
-    if ! install_package "wget" "gnupg" "lsb-release"; then
+    if ! install_package "wget" "gnupg" "lsb-release" "ca-certificates"; then
         log_error "Failed to install required dependencies for PostgreSQL recovery"
         return $E_PACKAGE_INSTALL_FAILED
     fi
@@ -10897,6 +11229,131 @@ recover_postgresql_installation() {
             for package in "${system_packages[@]}"; do
                 track_install_state "packages_installed" "$package"
             done
+            
+            return 0
+        else
+            log_error "Failed to install even system PostgreSQL packages"
+            return $E_PACKAGE_INSTALL_FAILED
+        fi
+    fi
+}
+
+# Recovery function for RPM-based systems (CentOS/RHEL/Fedora)
+recover_postgresql_rpm() {
+    log_info "Step 1: Cleaning up problematic PostgreSQL repository configurations..."
+    
+    local os_type="${SYSTEM_INFO[os_type]}"
+    local package_manager="${SYSTEM_INFO[package_manager]}"
+    
+    # Remove any existing PostgreSQL repository configurations
+    if [[ -f /etc/yum.repos.d/pgdg-redhat-all.repo ]]; then
+        log_info "Removing existing PostgreSQL repository file..."
+        rm -f /etc/yum.repos.d/pgdg-redhat-all.repo || true
+    fi
+    
+    if [[ -f /etc/yum.repos.d/pgdg-fedora-all.repo ]]; then
+        log_info "Removing existing PostgreSQL Fedora repository file..."
+        rm -f /etc/yum.repos.d/pgdg-fedora-all.repo || true
+    fi
+    
+    # Clean package cache
+    log_info "Step 2: Cleaning package cache..."
+    if [[ "$package_manager" == "dnf" ]]; then
+        dnf clean all 2>/dev/null || true
+    else
+        yum clean all 2>/dev/null || true
+    fi
+    
+    log_info "Step 3: Installing required dependencies..."
+    if ! install_package "wget" "curl"; then
+        log_error "Failed to install required dependencies for PostgreSQL recovery"
+        return $E_PACKAGE_INSTALL_FAILED
+    fi
+    
+    log_info "Step 4: Re-adding PostgreSQL repository with error handling..."
+    
+    local major_version=$(echo "${SYSTEM_INFO[os_version]}" | cut -d'.' -f1)
+    local repo_rpm=""
+    local repo_success=false
+    
+    case "$os_type" in
+        centos|rhel)
+            repo_rpm="https://download.postgresql.org/pub/repos/yum/reporpms/EL-${major_version}-x86_64/pgdg-redhat-repo-latest.noarch.rpm"
+            ;;
+        fedora)
+            repo_rpm="https://download.postgresql.org/pub/repos/yum/reporpms/F-${major_version}-x86_64/pgdg-fedora-repo-latest.noarch.rpm"
+            ;;
+        *)
+            log_warning "PostgreSQL repository recovery not supported for OS: $os_type"
+            log_info "Will attempt installation with system packages only"
+            ;;
+    esac
+    
+    if [[ -n "$repo_rpm" ]]; then
+        log_info "Attempting to install PostgreSQL repository from: $repo_rpm"
+        
+        local retry_count=0
+        local max_retries=3
+        
+        while [[ $retry_count -lt $max_retries ]] && [[ "$repo_success" == "false" ]]; do
+            if [[ "$package_manager" == "dnf" ]]; then
+                if timeout 60 dnf install -y "$repo_rpm" 2>/dev/null; then
+                    repo_success=true
+                    log_success "PostgreSQL repository installed successfully"
+                fi
+            else
+                if timeout 60 yum install -y "$repo_rpm" 2>/dev/null; then
+                    repo_success=true
+                    log_success "PostgreSQL repository installed successfully"
+                fi
+            fi
+            
+            if [[ "$repo_success" == "false" ]]; then
+                ((retry_count++))
+                log_warning "Repository installation failed (attempt $retry_count/$max_retries)"
+                if [[ $retry_count -lt $max_retries ]]; then
+                    log_info "Retrying in 5 seconds..."
+                    sleep 5
+                fi
+            fi
+        done
+        
+        if [[ "$repo_success" == "false" ]]; then
+            log_warning "Failed to install PostgreSQL repository after $max_retries attempts"
+            log_info "Will attempt installation with system packages only"
+        fi
+    fi
+    
+    log_info "Step 5: Attempting PostgreSQL installation with recovery settings..."
+    
+    # Try installation again with the cleaned up environment
+    if install_postgresql; then
+        log_success "PostgreSQL installation successful after recovery"
+        return 0
+    else
+        log_warning "Standard installation still failed, trying system packages only..."
+        
+        # Final attempt with just system packages
+        local system_packages=("postgresql-server" "postgresql" "postgresql-contrib")
+        
+        log_info "Installing system PostgreSQL packages: ${system_packages[*]}"
+        if install_package_array system_packages[@]; then
+            log_success "System PostgreSQL packages installed successfully"
+            
+            # Track installed packages
+            for package in "${system_packages[@]}"; do
+                track_install_state "packages_installed" "$package"
+            done
+            
+            # Initialize PostgreSQL database if needed
+            if [[ ! -d /var/lib/pgsql/data ]] || [[ ! -f /var/lib/pgsql/data/PG_VERSION ]]; then
+                log_info "Initializing PostgreSQL database..."
+                if postgresql-setup initdb 2>/dev/null || postgresql-setup --initdb 2>/dev/null; then
+                    log_success "PostgreSQL database initialized"
+                else
+                    log_warning "Failed to initialize PostgreSQL database automatically"
+                fi
+            fi
             
             return 0
         else
