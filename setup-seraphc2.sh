@@ -9039,8 +9039,8 @@ add_repository() {
                             codename="jammy"
                             ;;
                         *)
-                            log_warning "Unsupported or unknown codename: $codename, falling back to focal"
-                            codename="focal"
+                            log_warning "Unsupported or unknown codename: $codename, falling back to jammy"
+                            codename="jammy"
                             ;;
                     esac
                     
@@ -11033,31 +11033,109 @@ detect_postgresql_version() {
     local postgresql_version=""
     local postgresql_service_status=""
     
-    # Check for psql command
+    # Method 1: Check for psql command
     if command -v psql >/dev/null 2>&1; then
-        postgresql_version=$(psql --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)
-        log_debug "Found PostgreSQL version: $postgresql_version"
-    else
-        log_debug "PostgreSQL not found in PATH"
+        postgresql_version=$(psql --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
+        if [[ -n "$postgresql_version" ]]; then
+            log_debug "Found PostgreSQL version via psql: $postgresql_version"
+        fi
     fi
     
-    # Check service status
+    # Method 2: Check for postgres command if psql not found
+    if [[ -z "$postgresql_version" ]] && command -v postgres >/dev/null 2>&1; then
+        postgresql_version=$(postgres --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
+        if [[ -n "$postgresql_version" ]]; then
+            log_debug "Found PostgreSQL version via postgres: $postgresql_version"
+        fi
+    fi
+    
+    # Method 3: Check package manager for installed PostgreSQL packages
+    if [[ -z "$postgresql_version" ]]; then
+        local os_type="${SYSTEM_INFO[os_type]}"
+        local package_manager="${SYSTEM_INFO[package_manager]}"
+        
+        case "$package_manager" in
+            apt)
+                # Check for installed postgresql packages
+                if dpkg -l | grep -q "^ii.*postgresql-[0-9]"; then
+                    postgresql_version=$(dpkg -l | grep "^ii.*postgresql-[0-9]" | head -1 | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
+                    log_debug "Found PostgreSQL version via dpkg: $postgresql_version"
+                elif dpkg -l | grep -q "^ii.*postgresql[[:space:]]"; then
+                    # Generic postgresql package - try to get version from files
+                    if [[ -f /usr/share/postgresql/*/postgresql.conf.sample ]]; then
+                        postgresql_version=$(ls /usr/share/postgresql/*/postgresql.conf.sample 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
+                        log_debug "Found PostgreSQL version via file system: $postgresql_version"
+                    fi
+                fi
+                ;;
+            yum|dnf)
+                # Check for installed postgresql packages
+                if rpm -qa | grep -q "postgresql[0-9]"; then
+                    postgresql_version=$(rpm -qa | grep "postgresql[0-9]" | head -1 | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
+                    log_debug "Found PostgreSQL version via rpm: $postgresql_version"
+                elif rpm -qa | grep -q "^postgresql-server"; then
+                    # Try to get version from installed files
+                    if [[ -f /usr/share/pgsql/postgresql.conf.sample ]]; then
+                        postgresql_version=$(rpm -q postgresql-server --queryformat '%{VERSION}' 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
+                        log_debug "Found PostgreSQL version via rpm query: $postgresql_version"
+                    fi
+                fi
+                ;;
+            zypper)
+                if zypper se -i postgresql | grep -q "postgresql"; then
+                    postgresql_version=$(zypper se -i postgresql | grep "postgresql" | head -1 | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
+                    log_debug "Found PostgreSQL version via zypper: $postgresql_version"
+                fi
+                ;;
+            pacman)
+                if pacman -Q postgresql >/dev/null 2>&1; then
+                    postgresql_version=$(pacman -Q postgresql | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
+                    log_debug "Found PostgreSQL version via pacman: $postgresql_version"
+                fi
+                ;;
+        esac
+    fi
+    
+    # Check service status with multiple possible service names
     if command -v systemctl >/dev/null 2>&1; then
-        if systemctl is-active postgresql >/dev/null 2>&1; then
-            postgresql_service_status="active"
-            log_debug "PostgreSQL service is active"
-        elif systemctl is-enabled postgresql >/dev/null 2>&1; then
-            postgresql_service_status="enabled"
-            log_debug "PostgreSQL service is enabled but not active"
-        else
+        local service_names=("postgresql" "postgresql.service")
+        local os_type="${SYSTEM_INFO[os_type]}"
+        
+        # Add OS-specific service names
+        case "$os_type" in
+            centos|rhel|fedora)
+                service_names+=("postgresql-15" "postgresql-14" "postgresql-13" "postgresql-12")
+                ;;
+        esac
+        
+        for service_name in "${service_names[@]}"; do
+            if systemctl list-unit-files "$service_name" >/dev/null 2>&1; then
+                if systemctl is-active "$service_name" >/dev/null 2>&1; then
+                    postgresql_service_status="active"
+                    log_debug "PostgreSQL service is active: $service_name"
+                    break
+                elif systemctl is-enabled "$service_name" >/dev/null 2>&1; then
+                    postgresql_service_status="enabled"
+                    log_debug "PostgreSQL service is enabled but not active: $service_name"
+                fi
+            fi
+        done
+        
+        if [[ -z "$postgresql_service_status" ]]; then
             postgresql_service_status="inactive"
-            log_debug "PostgreSQL service is not active or enabled"
+            log_debug "No active PostgreSQL services found"
         fi
     fi
     
     # Store results in global variables for later use
     POSTGRESQL_CURRENT_VERSION="$postgresql_version"
     POSTGRESQL_SERVICE_STATUS="$postgresql_service_status"
+    
+    if [[ -n "$postgresql_version" ]]; then
+        log_debug "PostgreSQL detection completed - Version: $postgresql_version, Service: $postgresql_service_status"
+    else
+        log_debug "PostgreSQL not detected on system"
+    fi
     
     return 0
 }
@@ -11090,7 +11168,26 @@ recover_postgresql_installation() {
     local os_type="${SYSTEM_INFO[os_type]}"
     local package_manager="${SYSTEM_INFO[package_manager]}"
     
-    # Support recovery for different package managers
+    # Clean up any problematic repository configurations first
+    log_info "Cleaning up problematic PostgreSQL repository configurations..."
+    cleanup_postgresql_repositories
+    
+    # Try system packages first (most reliable)
+    log_info "Attempting recovery with system packages..."
+    if install_postgresql_system_packages; then
+        log_success "PostgreSQL recovery successful using system packages"
+        return 0
+    fi
+    
+    # If system packages fail, try manual package installation
+    log_info "System packages failed, trying manual package installation..."
+    if recover_postgresql_manual_installation; then
+        log_success "PostgreSQL recovery successful using manual installation"
+        return 0
+    fi
+    
+    # Final attempt with legacy recovery methods
+    log_warning "Standard recovery methods failed, trying legacy recovery..."
     case "$package_manager" in
         apt)
             recover_postgresql_apt
@@ -11103,6 +11200,121 @@ recover_postgresql_installation() {
             return $E_PACKAGE_INSTALL_FAILED
             ;;
     esac
+}
+
+# Clean up problematic PostgreSQL repository configurations
+cleanup_postgresql_repositories() {
+    log_debug "Cleaning up PostgreSQL repository configurations..."
+    
+    # Remove PostgreSQL repository files
+    local repo_files=(
+        "/etc/apt/sources.list.d/pgdg.list"
+        "/etc/yum.repos.d/pgdg-redhat-all.repo"
+        "/etc/yum.repos.d/pgdg-fedora-all.repo"
+        "/etc/zypp/repos.d/postgresql.repo"
+    )
+    
+    for repo_file in "${repo_files[@]}"; do
+        if [[ -f "$repo_file" ]]; then
+            log_debug "Removing repository file: $repo_file"
+            rm -f "$repo_file" 2>/dev/null || true
+        fi
+    done
+    
+    # Remove GPG keys
+    local key_files=(
+        "/usr/share/keyrings/postgresql-archive-keyring.gpg"
+        "/etc/apt/trusted.gpg.d/postgresql.gpg"
+    )
+    
+    for key_file in "${key_files[@]}"; do
+        if [[ -f "$key_file" ]]; then
+            log_debug "Removing GPG key file: $key_file"
+            rm -f "$key_file" 2>/dev/null || true
+        fi
+    done
+    
+    # Clean up deprecated apt-key entries
+    if command -v apt-key >/dev/null 2>&1 && apt-key list 2>/dev/null | grep -qi postgresql; then
+        log_debug "Removing deprecated PostgreSQL GPG keys from apt-key..."
+        apt-key del ACCC4CF8 2>/dev/null || true
+    fi
+    
+    log_debug "Repository cleanup completed"
+}
+
+# Manual PostgreSQL installation as recovery method
+recover_postgresql_manual_installation() {
+    log_info "Attempting manual PostgreSQL installation..."
+    
+    local os_type="${SYSTEM_INFO[os_type]}"
+    local package_manager="${SYSTEM_INFO[package_manager]}"
+    
+    # Update package cache
+    if ! update_package_cache; then
+        log_warning "Failed to update package cache during recovery"
+        return 1
+    fi
+    
+    # Try minimal PostgreSQL installation
+    local minimal_packages=()
+    
+    case "$os_type" in
+        ubuntu|debian)
+            minimal_packages=("postgresql" "postgresql-client")
+            ;;
+        centos|rhel|fedora)
+            minimal_packages=("postgresql-server" "postgresql")
+            ;;
+        opensuse|sles)
+            minimal_packages=("postgresql-server" "postgresql")
+            ;;
+        arch)
+            minimal_packages=("postgresql")
+            ;;
+        alpine)
+            minimal_packages=("postgresql")
+            ;;
+        *)
+            log_warning "Manual installation not supported for OS: $os_type"
+            return 1
+            ;;
+    esac
+    
+    log_info "Installing minimal PostgreSQL packages: ${minimal_packages[*]}"
+    
+    # Install packages one by one to identify issues
+    local installed_packages=()
+    for package in "${minimal_packages[@]}"; do
+        log_info "Installing package: $package"
+        if install_package "$package"; then
+            installed_packages+=("$package")
+            track_install_state "packages_installed" "$package"
+            log_success "Successfully installed: $package"
+        else
+            log_warning "Failed to install package: $package"
+        fi
+    done
+    
+    # Check if we have at least the core PostgreSQL package
+    if [[ ${#installed_packages[@]} -eq 0 ]]; then
+        log_error "Failed to install any PostgreSQL packages"
+        return 1
+    fi
+    
+    # Initialize database if needed (for RPM-based systems)
+    if [[ "$package_manager" =~ ^(yum|dnf|zypper)$ ]]; then
+        initialize_postgresql_cluster_rpm
+    fi
+    
+    # Try to start PostgreSQL service
+    if ensure_postgresql_service_running; then
+        log_success "PostgreSQL service started successfully"
+        return 0
+    else
+        log_warning "PostgreSQL packages installed but service failed to start"
+        return 1
+    fi
 }
 
 # Recovery function for APT-based systems (Ubuntu/Debian)
@@ -11179,8 +11391,8 @@ recover_postgresql_apt() {
                 log_info "Using PostgreSQL repository for codename: $codename"
                 ;;
             *)
-                log_warning "Unsupported codename: $codename, falling back to focal"
-                codename="focal"
+                log_warning "Unsupported codename: $codename, falling back to jammy"
+                codename="jammy"
                 ;;
         esac
         
@@ -11377,80 +11589,76 @@ install_postgresql() {
     if [[ -n "$POSTGRESQL_CURRENT_VERSION" ]]; then
         if check_postgresql_version_requirements "$POSTGRESQL_CURRENT_VERSION"; then
             log_success "PostgreSQL $POSTGRESQL_CURRENT_VERSION is already installed and meets requirements"
-            return 0
-        else
-            log_warning "PostgreSQL $POSTGRESQL_CURRENT_VERSION is installed but does not meet minimum requirements"
-            log_info "Proceeding with installation of newer version..."
-        fi
-    fi
-    
-    # Add PostgreSQL official repository if not already added
-    local use_official_repo=true
-    if ! is_repository_added "postgresql"; then
-        log_info "Adding PostgreSQL official repository..."
-        if ! add_repository "postgresql"; then
-            log_warning "Failed to add PostgreSQL official repository, will use system packages"
-            use_official_repo=false
-        fi
-    fi
-    
-    # Install PostgreSQL packages based on distribution
-    case "$os_type" in
-        ubuntu|debian)
-            if [[ "$use_official_repo" == "true" ]]; then
-                # Try PostgreSQL 15 first, then fallback to available versions
-                local preferred_packages=(
-                    "postgresql-15"
-                    "postgresql-client-15"
-                    "postgresql-contrib-15"
-                    "postgresql-server-dev-15"
-                    "libpq-dev"
-                )
-                
-                local fallback_packages=(
-                    "postgresql-14"
-                    "postgresql-client-14"
-                    "postgresql-contrib-14"
-                    "postgresql-server-dev-14"
-                    "libpq-dev"
-                )
-            else
-                # Use system packages only
-                local preferred_packages=()
-                local fallback_packages=()
+            
+            # Ensure PostgreSQL service is running
+            if ! ensure_postgresql_service_running; then
+                log_warning "PostgreSQL is installed but service is not running properly"
+                return $E_SERVICE_ERROR
             fi
             
-            local final_fallback_packages=(
+            return 0
+        else
+            log_warning "PostgreSQL $POSTGRESQL_CURRENT_VERSION is installed but does not meet minimum requirements (13+)"
+            log_info "Will attempt to install a newer version alongside existing installation..."
+        fi
+    else
+        log_info "PostgreSQL not detected, proceeding with installation..."
+    fi
+    
+    # Install PostgreSQL using system packages first (most reliable approach)
+    if install_postgresql_system_packages; then
+        log_success "PostgreSQL installed successfully using system packages"
+        return 0
+    fi
+    
+    # If system packages fail, try official repository as fallback
+    log_warning "System package installation failed, trying official PostgreSQL repository..."
+    if install_postgresql_with_official_repo; then
+        log_success "PostgreSQL installed successfully using official repository"
+        return 0
+    fi
+    
+    # Final fallback - try recovery
+    log_error "All PostgreSQL installation methods failed"
+    return $E_PACKAGE_INSTALL_FAILED
+}
+
+# Install PostgreSQL using system packages (preferred method)
+install_postgresql_system_packages() {
+    log_info "Attempting PostgreSQL installation using system packages..."
+    
+    local os_type="${SYSTEM_INFO[os_type]}"
+    local package_manager="${SYSTEM_INFO[package_manager]}"
+    local packages_to_install=()
+    local installation_successful=false
+    
+    # Define system packages for each OS
+    case "$os_type" in
+        ubuntu|debian)
+            packages_to_install=(
                 "postgresql"
                 "postgresql-client"
                 "postgresql-contrib"
-                "postgresql-server-dev-all"
                 "libpq-dev"
             )
-            ;;
-        centos|rhel|fedora)
-            if [[ "$use_official_repo" == "true" ]]; then
-                local preferred_packages=(
-                    "postgresql15-server"
-                    "postgresql15"
-                    "postgresql15-contrib"
-                    "postgresql15-devel"
-                    "libpq-devel"
-                )
-                
-                local fallback_packages=(
-                    "postgresql14-server"
-                    "postgresql14"
-                    "postgresql14-contrib"
-                    "postgresql14-devel"
-                    "libpq-devel"
-                )
-            else
-                local preferred_packages=()
-                local fallback_packages=()
-            fi
             
-            local final_fallback_packages=(
+            # Add development packages if available
+            if apt-cache search postgresql-server-dev-all >/dev/null 2>&1; then
+                packages_to_install+=("postgresql-server-dev-all")
+            fi
+            ;;
+            
+        centos|rhel)
+            packages_to_install=(
+                "postgresql-server"
+                "postgresql"
+                "postgresql-contrib"
+                "postgresql-devel"
+            )
+            ;;
+            
+        fedora)
+            packages_to_install=(
                 "postgresql-server"
                 "postgresql"
                 "postgresql-contrib"
@@ -11458,59 +11666,275 @@ install_postgresql() {
                 "libpq-devel"
             )
             ;;
+            
+        opensuse|sles)
+            packages_to_install=(
+                "postgresql-server"
+                "postgresql"
+                "postgresql-contrib"
+                "postgresql-devel"
+            )
+            ;;
+            
+        arch)
+            packages_to_install=(
+                "postgresql"
+                "postgresql-libs"
+            )
+            ;;
+            
+        alpine)
+            packages_to_install=(
+                "postgresql"
+                "postgresql-client"
+                "postgresql-contrib"
+                "postgresql-dev"
+            )
+            ;;
+            
         *)
-            log_error "PostgreSQL installation not supported for OS: $os_type"
-            return $E_PACKAGE_INSTALL_FAILED
+            log_warning "System package installation not defined for OS: $os_type"
+            return 1
             ;;
     esac
     
-    # Try to install packages with fallback versions
+    log_info "Installing PostgreSQL system packages: ${packages_to_install[*]}"
+    
+    # Update package cache first
+    if ! update_package_cache; then
+        log_warning "Failed to update package cache"
+        return 1
+    fi
+    
+    # Install packages
+    if install_package_array packages_to_install[@]; then
+        installation_successful=true
+        log_success "System PostgreSQL packages installed successfully"
+        
+        # Track installed packages
+        for package in "${packages_to_install[@]}"; do
+            track_install_state "packages_installed" "$package"
+        done
+        
+        # Initialize database cluster for RPM-based systems
+        if [[ "$package_manager" =~ ^(yum|dnf|zypper)$ ]]; then
+            initialize_postgresql_cluster_rpm
+        fi
+        
+        # Ensure service is started and enabled
+        if ensure_postgresql_service_running; then
+            log_success "PostgreSQL service is running and enabled"
+            return 0
+        else
+            log_warning "PostgreSQL packages installed but service setup failed"
+            return 1
+        fi
+    else
+        log_warning "Failed to install system PostgreSQL packages"
+        return 1
+    fi
+}
+
+# Install PostgreSQL using official repository (fallback method)
+install_postgresql_with_official_repo() {
+    log_info "Attempting PostgreSQL installation using official repository..."
+    
+    local os_type="${SYSTEM_INFO[os_type]}"
+    
+    # Skip official repo for newer Ubuntu versions that aren't supported yet
+    if [[ "$os_type" == "ubuntu" ]]; then
+        local version="${SYSTEM_INFO[os_version]}"
+        case "$version" in
+            "24.04"|"23."*|"25."*)
+                log_info "Ubuntu $version detected - official PostgreSQL repository may not be available"
+                log_info "Skipping official repository installation"
+                return 1
+                ;;
+        esac
+    fi
+    
+    # Add official repository
+    if ! is_repository_added "postgresql"; then
+        log_info "Adding PostgreSQL official repository..."
+        if ! add_repository "postgresql"; then
+            log_warning "Failed to add PostgreSQL official repository"
+            return 1
+        fi
+    fi
+    
+    # Try to install specific versions
     local packages_to_install=()
     local installation_successful=false
     
-    # Try preferred packages first (if available)
-    if [[ ${#preferred_packages[@]} -gt 0 ]]; then
-        log_info "Attempting to install PostgreSQL 15..."
-        if install_package_array preferred_packages[@]; then
-            packages_to_install=("${preferred_packages[@]}")
-            installation_successful=true
-            log_success "PostgreSQL 15 packages installed successfully"
+    case "$os_type" in
+        ubuntu|debian)
+            # Try PostgreSQL 15, then 14, then 13
+            for version in 15 14 13; do
+                local version_packages=(
+                    "postgresql-$version"
+                    "postgresql-client-$version"
+                    "postgresql-contrib-$version"
+                    "postgresql-server-dev-$version"
+                    "libpq-dev"
+                )
+                
+                log_info "Attempting to install PostgreSQL $version..."
+                if install_package_array version_packages[@]; then
+                    packages_to_install=("${version_packages[@]}")
+                    installation_successful=true
+                    log_success "PostgreSQL $version packages installed successfully"
+                    break
+                fi
+            done
+            ;;
+            
+        centos|rhel|fedora)
+            # Try PostgreSQL 15, then 14, then 13
+            for version in 15 14 13; do
+                local version_packages=(
+                    "postgresql${version}-server"
+                    "postgresql${version}"
+                    "postgresql${version}-contrib"
+                    "postgresql${version}-devel"
+                )
+                
+                log_info "Attempting to install PostgreSQL $version..."
+                if install_package_array version_packages[@]; then
+                    packages_to_install=("${version_packages[@]}")
+                    installation_successful=true
+                    log_success "PostgreSQL $version packages installed successfully"
+                    
+                    # Initialize database for specific version
+                    if [[ -f "/usr/pgsql-$version/bin/postgresql-$version-setup" ]]; then
+                        log_info "Initializing PostgreSQL $version database..."
+                        "/usr/pgsql-$version/bin/postgresql-$version-setup" initdb || true
+                    fi
+                    break
+                fi
+            done
+            ;;
+    esac
+    
+    if [[ "$installation_successful" == "true" ]]; then
+        # Track installed packages
+        for package in "${packages_to_install[@]}"; do
+            track_install_state "packages_installed" "$package"
+        done
+        
+        # Ensure service is started and enabled
+        if ensure_postgresql_service_running; then
+            return 0
+        else
+            log_warning "PostgreSQL packages installed but service setup failed"
+            return 1
+        fi
+    else
+        log_warning "Failed to install PostgreSQL from official repository"
+        return 1
+    fi
+}
+
+# Initialize PostgreSQL cluster for RPM-based systems
+initialize_postgresql_cluster_rpm() {
+    log_info "Initializing PostgreSQL database cluster..."
+    
+    local data_dir="/var/lib/pgsql/data"
+    
+    # Check if already initialized
+    if [[ -f "$data_dir/PG_VERSION" ]]; then
+        log_info "PostgreSQL database cluster already initialized"
+        return 0
+    fi
+    
+    # Try different initialization methods
+    if command -v postgresql-setup >/dev/null 2>&1; then
+        log_info "Using postgresql-setup to initialize database..."
+        if postgresql-setup initdb 2>/dev/null || postgresql-setup --initdb 2>/dev/null; then
+            log_success "PostgreSQL database initialized successfully"
+            return 0
         fi
     fi
     
-    # Try fallback packages if preferred failed (if available)
-    if [[ "$installation_successful" != "true" && ${#fallback_packages[@]} -gt 0 ]]; then
-        log_warning "PostgreSQL 15 not available, trying PostgreSQL 14..."
-        if install_package_array fallback_packages[@]; then
-            packages_to_install=("${fallback_packages[@]}")
-            installation_successful=true
-            log_success "PostgreSQL 14 packages installed successfully"
+    # Try initdb directly
+    if command -v initdb >/dev/null 2>&1; then
+        log_info "Using initdb to initialize database..."
+        if sudo -u postgres initdb -D "$data_dir" 2>/dev/null; then
+            log_success "PostgreSQL database initialized successfully"
+            return 0
         fi
     fi
     
-    # Try final fallback (system packages)
-    if [[ "$installation_successful" != "true" ]]; then
-        log_warning "Specific PostgreSQL versions not available, trying default packages..."
-        if install_package_array final_fallback_packages[@]; then
-            packages_to_install=("${final_fallback_packages[@]}")
-            installation_successful=true
-            log_success "Default PostgreSQL packages installed successfully"
+    log_warning "Failed to initialize PostgreSQL database cluster"
+    log_info "Database may need to be initialized manually after installation"
+    return 1
+}
+
+# Ensure PostgreSQL service is running and enabled
+ensure_postgresql_service_running() {
+    log_info "Ensuring PostgreSQL service is running..."
+    
+    local service_names=("postgresql" "postgresql.service")
+    local os_type="${SYSTEM_INFO[os_type]}"
+    
+    # Add OS-specific service names
+    case "$os_type" in
+        centos|rhel|fedora)
+            service_names+=("postgresql-15" "postgresql-14" "postgresql-13")
+            ;;
+    esac
+    
+    local service_started=false
+    
+    for service_name in "${service_names[@]}"; do
+        if systemctl list-unit-files "$service_name" >/dev/null 2>&1; then
+            log_info "Found PostgreSQL service: $service_name"
+            
+            # Enable the service
+            if systemctl enable "$service_name" 2>/dev/null; then
+                log_info "Enabled PostgreSQL service: $service_name"
+            fi
+            
+            # Start the service
+            if systemctl start "$service_name" 2>/dev/null; then
+                log_info "Started PostgreSQL service: $service_name"
+                
+                # Wait a moment for service to fully start
+                sleep 2
+                
+                # Verify service is active
+                if systemctl is-active "$service_name" >/dev/null 2>&1; then
+                    log_success "PostgreSQL service is active: $service_name"
+                    track_install_state "services_created" "$service_name"
+                    service_started=true
+                    break
+                fi
+            fi
         fi
-    fi
-    
-    if [[ "$installation_successful" != "true" ]]; then
-        log_error "Failed to install any PostgreSQL packages"
-        log_info "This may be due to repository issues, package conflicts, or network problems"
-        log_info "The setup script will attempt automatic recovery..."
-        return $E_PACKAGE_INSTALL_FAILED
-    fi
-    
-    # Track installed packages
-    for package in "${packages_to_install[@]}"; do
-        track_install_state "packages_installed" "$package"
     done
     
-    log_success "PostgreSQL packages installed successfully"
+    if [[ "$service_started" == "false" ]]; then
+        log_warning "Failed to start PostgreSQL service"
+        return 1
+    fi
+    
+    # Test PostgreSQL connection
+    log_info "Testing PostgreSQL connection..."
+    local connection_test_attempts=0
+    local max_attempts=10
+    
+    while [[ $connection_test_attempts -lt $max_attempts ]]; do
+        if sudo -u postgres psql -c "SELECT 1;" >/dev/null 2>&1; then
+            log_success "PostgreSQL connection test successful"
+            return 0
+        fi
+        
+        ((connection_test_attempts++))
+        log_info "Connection test attempt $connection_test_attempts/$max_attempts..."
+        sleep 2
+    done
+    
+    log_warning "PostgreSQL service is running but connection test failed"
+    log_info "This may be normal for a fresh installation - database setup will continue"
     return 0
 }
 
