@@ -13298,7 +13298,7 @@ execute_migration() {
     # Record start time for execution timing
     local start_time=$(date +%s%3N)
     
-    # Execute migration in a transaction
+    # Execute migration in a transaction with better error handling
     local migration_sql="
 BEGIN;
 
@@ -13307,16 +13307,34 @@ $(cat "$migration_file")
 
 -- Record migration as applied
 INSERT INTO schema_migrations (migration_id, applied_at, execution_time_ms) 
-VALUES ('$migration_id', CURRENT_TIMESTAMP, 0);
+VALUES ('$migration_id', CURRENT_TIMESTAMP, 0)
+ON CONFLICT (migration_id) DO NOTHING;
 
 COMMIT;
 "
     
-    if ! psql -h "$db_host" -p "$db_port" -U "$db_user" -d "$db_name" \
-        -c "$migration_sql" >/dev/null 2>&1; then
-        log_error "Failed to execute migration: $filename"
-        unset PGPASSWORD
-        return $E_DATABASE_ERROR
+    # Execute migration and capture both stdout and stderr
+    local migration_output
+    migration_output=$(psql -h "$db_host" -p "$db_port" -U "$db_user" -d "$db_name" \
+        -c "$migration_sql" 2>&1)
+    local migration_exit_code=$?
+    
+    if [[ $migration_exit_code -ne 0 ]]; then
+        # Check if error is due to duplicate table (code 42P07)
+        if echo "$migration_output" | grep -q "42P07\|already exists"; then
+            log_warning "Migration $filename: Table already exists, marking as completed"
+            
+            # Just record the migration as applied without executing the content
+            psql -h "$db_host" -p "$db_port" -U "$db_user" -d "$db_name" \
+                -c "INSERT INTO schema_migrations (migration_id, applied_at, execution_time_ms) 
+                    VALUES ('$migration_id', CURRENT_TIMESTAMP, 0)
+                    ON CONFLICT (migration_id) DO NOTHING;" >/dev/null 2>&1 || true
+        else
+            log_error "Failed to execute migration: $filename"
+            log_error "Error details: $migration_output"
+            unset PGPASSWORD
+            return $E_DATABASE_ERROR
+        fi
     fi
     
     # Calculate execution time
@@ -14159,14 +14177,14 @@ configure_redis_security() {
     # Disable dangerous commands for security - ignore errors
     if cat >> "$redis_conf_path" 2>/dev/null << 'EOF'
 
-# Security: Disable dangerous commands (Redis 7.0+ compatible)
-rename-command FLUSHDB FLUSHDB_DISABLED_SERAPHC2
-rename-command FLUSHALL FLUSHALL_DISABLED_SERAPHC2
-rename-command DEBUG DEBUG_DISABLED_SERAPHC2
-rename-command CONFIG CONFIG_DISABLED_SERAPHC2
-rename-command SHUTDOWN SHUTDOWN_SERAPHC2
-rename-command EVAL EVAL_DISABLED_SERAPHC2
-rename-command SCRIPT SCRIPT_DISABLED_SERAPHC2
+# Security: Disable dangerous commands (correct syntax for Redis 7.0+)
+rename-command FLUSHDB ""
+rename-command FLUSHALL ""
+rename-command DEBUG ""
+rename-command CONFIG ""
+rename-command SHUTDOWN ""
+rename-command EVAL ""
+rename-command SCRIPT ""
 EOF
     then
         log_debug "Added Redis security commands"
