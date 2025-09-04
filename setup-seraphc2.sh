@@ -10009,6 +10009,12 @@ configure_nodejs_environment() {
     
     log_info "Configuring Node.js environment for service user..."
     
+    # Ensure application directory exists
+    if ! mkdir -p "$app_dir"; then
+        log_error "Failed to create application directory: $app_dir"
+        return 1
+    fi
+    
     # Create .npmrc file for the service user
     local npmrc_file="$app_dir/.npmrc"
     
@@ -10734,6 +10740,24 @@ setup_application_permissions() {
     local config_dir="${CONFIG[config_dir]}"
     
     log_info "Setting up application file permissions..."
+    
+    # Create and set up log directory first
+    if ! mkdir -p "$log_dir"; then
+        log_error "Failed to create log directory: $log_dir"
+        return 1
+    fi
+    
+    # Set ownership for log directory
+    if ! chown "$service_user:$service_user" "$log_dir"; then
+        log_error "Failed to set ownership for log directory"
+        return 1
+    fi
+    
+    # Set permissions for log directory
+    if ! chmod 755 "$log_dir"; then
+        log_error "Failed to set permissions for log directory"
+        return 1
+    fi
     
     # Set ownership for all application files
     if ! chown -R "$service_user:$service_user" "$app_dir"; then
@@ -13130,6 +13154,14 @@ run_database_migrations() {
             return $E_DATABASE_ERROR
         }
         
+        # Verify migration script exists
+        if [[ ! -f "scripts/migrate.ts" ]]; then
+            log_error "Migration script not found: $app_dir/scripts/migrate.ts"
+            log_info "Available files in scripts directory:"
+            ls -la scripts/ 2>/dev/null || log_error "Scripts directory not found"
+            return $E_DATABASE_ERROR
+        fi
+        
         # Set environment variables for migration script
         export DB_HOST="${CONFIG[db_host]}"
         export DB_PORT="${CONFIG[db_port]}"
@@ -13138,13 +13170,68 @@ run_database_migrations() {
         export DB_PASSWORD="${CONFIG[db_password]}"
         export NODE_ENV="production"
         
-        # Run migrations using the TypeScript script
-        if ! npx ts-node scripts/migrate.ts up; then
-            # Clean up environment variables
-            unset DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD NODE_ENV
+        # Ensure ts-node and other binaries have proper permissions
+        if [[ -d "node_modules/.bin" ]]; then
+            chmod +x node_modules/.bin/* 2>/dev/null || true
+            chown -R "$service_user:$service_user" node_modules/.bin/ 2>/dev/null || true
+        fi
+        
+        # Debug information
+        log_debug "Current working directory: $(pwd)"
+        log_debug "Node.js version: $(node --version 2>/dev/null || echo 'not found')"
+        log_debug "npm version: $(npm --version 2>/dev/null || echo 'not found')"
+        log_debug "ts-node available: $(which ts-node 2>/dev/null || echo 'not found')"
+        
+        # Run migrations using the TypeScript script as the service user
+        if ! sudo -u "$service_user" HOME="$app_dir" npx ts-node scripts/migrate.ts up; then
+            log_warning "TypeScript migration runner failed, trying alternative approach..."
             
-            handle_migration_error "TypeScript migration runner failed" "scripts/migrate.ts"
-            return $E_DATABASE_ERROR
+            # Try running with node directly if TypeScript is compiled
+            if [[ -f "dist/scripts/migrate.js" ]]; then
+                log_info "Using compiled JavaScript migration runner..."
+                if ! sudo -u "$service_user" HOME="$app_dir" node dist/scripts/migrate.js up; then
+                    # Clean up environment variables
+                    unset DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD NODE_ENV
+                    handle_migration_error "JavaScript migration runner failed" "dist/scripts/migrate.js"
+                    return $E_DATABASE_ERROR
+                fi
+            else
+                # Try compiling TypeScript first
+                log_info "Compiling TypeScript and retrying migration..."
+                if sudo -u "$service_user" HOME="$app_dir" npm run build >/dev/null 2>&1 && [[ -f "dist/scripts/migrate.js" ]]; then
+                    if ! sudo -u "$service_user" HOME="$app_dir" node dist/scripts/migrate.js up; then
+                        # Clean up environment variables
+                        unset DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD NODE_ENV
+                        handle_migration_error "JavaScript migration runner failed after compilation" "dist/scripts/migrate.js"
+                        return $E_DATABASE_ERROR
+                    fi
+                else
+                    # Try running from the original source directory as last resort
+                    log_info "Trying migration from source directory..."
+                    local original_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+                    if [[ -f "$original_dir/scripts/migrate.ts" ]]; then
+                        cd "$original_dir" || {
+                            unset DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD NODE_ENV
+                            handle_migration_error "Failed to change to source directory" "$original_dir"
+                            return $E_DATABASE_ERROR
+                        }
+                        
+                        if ! sudo -u "$service_user" HOME="$original_dir" npx ts-node scripts/migrate.ts up; then
+                            unset DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD NODE_ENV
+                            handle_migration_error "Migration failed from source directory" "$original_dir/scripts/migrate.ts"
+                            return $E_DATABASE_ERROR
+                        fi
+                        
+                        # Return to app directory
+                        cd "$app_dir" || log_warning "Failed to return to app directory"
+                    else
+                        # Clean up environment variables
+                        unset DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD NODE_ENV
+                        handle_migration_error "TypeScript migration runner failed and compilation failed" "scripts/migrate.ts"
+                        return $E_DATABASE_ERROR
+                    fi
+                fi
+            fi
         fi
         
         # Clean up environment variables
