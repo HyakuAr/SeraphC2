@@ -1,26 +1,7 @@
--- Migration: Create audit logs table
+-- Migration: Add additional audit logs indexes
 -- Up migration
 
-CREATE TABLE IF NOT EXISTS audit_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    operator_id UUID REFERENCES operators(id) ON DELETE SET NULL,
-    action VARCHAR(255) NOT NULL,
-    resource_type VARCHAR(100) NOT NULL,
-    resource_id VARCHAR(255),
-    details JSONB DEFAULT '{}',
-    ip_address INET,
-    user_agent TEXT,
-    success BOOLEAN NOT NULL DEFAULT true,
-    error_message TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create indexes for performance
-CREATE INDEX IF NOT EXISTS idx_audit_logs_operator_id ON audit_logs(operator_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_resource_type ON audit_logs(resource_type);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_success ON audit_logs(success);
+-- Create additional indexes for performance (table already exists from migration 014)
 CREATE INDEX IF NOT EXISTS idx_audit_logs_composite ON audit_logs(operator_id, created_at, success);
 
 -- Create partial index for failed operations

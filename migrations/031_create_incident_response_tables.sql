@@ -3,13 +3,13 @@
 
 -- Incidents table for tracking incident response events
 CREATE TABLE IF NOT EXISTS incidents (
-    id VARCHAR(255) PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     type VARCHAR(50) NOT NULL,
     severity VARCHAR(20) NOT NULL,
     timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     description TEXT NOT NULL,
     affected_implants JSONB DEFAULT '[]',
-    operator_id VARCHAR(255),
+    operator_id UUID REFERENCES operators(id) ON DELETE SET NULL,
     response_actions JSONB DEFAULT '[]',
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -35,8 +35,8 @@ CREATE TABLE IF NOT EXISTS incidents (
 
 -- Kill switch timers for monitoring implant communication
 CREATE TABLE IF NOT EXISTS kill_switch_timers (
-    id VARCHAR(255) PRIMARY KEY,
-    implant_id VARCHAR(255) NOT NULL,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    implant_id UUID NOT NULL REFERENCES implants(id) ON DELETE CASCADE,
     timeout BIGINT NOT NULL, -- timeout in milliseconds
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     last_heartbeat TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -48,9 +48,9 @@ CREATE TABLE IF NOT EXISTS kill_switch_timers (
 
 -- Kill switch activations for tracking when kill switches are triggered
 CREATE TABLE IF NOT EXISTS kill_switch_activations (
-    id VARCHAR(255) PRIMARY KEY,
-    implant_id VARCHAR(255) NOT NULL,
-    timer_id VARCHAR(255) NOT NULL,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    implant_id UUID NOT NULL REFERENCES implants(id) ON DELETE CASCADE,
+    timer_id UUID NOT NULL REFERENCES kill_switch_timers(id) ON DELETE CASCADE,
     activated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     reason TEXT NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS kill_switch_activations (
 
 -- Backup metadata for tracking system backups
 CREATE TABLE IF NOT EXISTS backup_metadata (
-    id VARCHAR(255) PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     type VARCHAR(20) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     size BIGINT NOT NULL,
@@ -82,9 +82,9 @@ CREATE TABLE IF NOT EXISTS backup_metadata (
 
 -- Recovery operations for tracking restore activities
 CREATE TABLE IF NOT EXISTS recovery_operations (
-    id VARCHAR(255) PRIMARY KEY,
-    backup_id VARCHAR(255) NOT NULL REFERENCES backup_metadata(id),
-    operator_id VARCHAR(255),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    backup_id UUID NOT NULL REFERENCES backup_metadata(id) ON DELETE CASCADE,
+    operator_id UUID REFERENCES operators(id) ON DELETE SET NULL,
     started_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMP WITH TIME ZONE,
     status VARCHAR(20) NOT NULL DEFAULT 'in_progress',
@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS emergency_contacts (
 -- Incident notifications tracking
 CREATE TABLE IF NOT EXISTS incident_notifications (
     id SERIAL PRIMARY KEY,
-    incident_id VARCHAR(255) NOT NULL REFERENCES incidents(id),
+    incident_id UUID NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
     contact_id INTEGER NOT NULL REFERENCES emergency_contacts(id),
     notification_type VARCHAR(50) NOT NULL, -- email, sms, webhook
     sent_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -158,14 +158,7 @@ CREATE INDEX IF NOT EXISTS idx_incident_notifications_incident_id ON incident_no
 CREATE INDEX IF NOT EXISTS idx_incident_notifications_contact_id ON incident_notifications(contact_id);
 CREATE INDEX IF NOT EXISTS idx_incident_notifications_sent_at ON incident_notifications(sent_at);
 
--- Triggers for updating timestamps
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
+-- Triggers for updating timestamps (function already exists from migration 001)
 
 CREATE TRIGGER update_incidents_updated_at BEFORE UPDATE ON incidents
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
