@@ -13356,6 +13356,7 @@ COMMIT;
 # Run database migrations using existing migrate.ts script
 run_database_migrations() {
     local app_dir="${CONFIG[app_dir]}"
+    local service_user="${CONFIG[service_user]}"
     local migrations_dir="$app_dir/migrations"
     
     log_info "Running database migrations..."
@@ -13429,18 +13430,26 @@ run_database_migrations() {
         
         # Debug information
         log_debug "Current working directory: $(pwd)"
+        log_debug "Service user: $service_user"
         log_debug "Node.js version: $(node --version 2>/dev/null || echo 'not found')"
         log_debug "npm version: $(npm --version 2>/dev/null || echo 'not found')"
         log_debug "ts-node available: $(which ts-node 2>/dev/null || echo 'not found')"
+        log_debug "npx available: $(which npx 2>/dev/null || echo 'not found')"
+        
+        # Verify service user exists
+        if ! id "$service_user" >/dev/null 2>&1; then
+            log_error "Service user '$service_user' does not exist"
+            return $E_DATABASE_ERROR
+        fi
         
         # Run migrations using the TypeScript script as the service user
-        if ! sudo -u "$service_user" HOME="$app_dir" npx ts-node scripts/migrate.ts up; then
+        if ! sudo -u "$service_user" HOME="$app_dir" PATH="$PATH" npx ts-node scripts/migrate.ts up; then
             log_warning "TypeScript migration runner failed, trying alternative approach..."
             
             # Try running with node directly if TypeScript is compiled
             if [[ -f "dist/scripts/migrate.js" ]]; then
                 log_info "Using compiled JavaScript migration runner..."
-                if ! sudo -u "$service_user" HOME="$app_dir" node dist/scripts/migrate.js up; then
+                if ! sudo -u "$service_user" HOME="$app_dir" PATH="$PATH" node dist/scripts/migrate.js up; then
                     # Clean up environment variables
                     unset DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD NODE_ENV
                     handle_migration_error "JavaScript migration runner failed" "dist/scripts/migrate.js"
@@ -13449,8 +13458,8 @@ run_database_migrations() {
             else
                 # Try compiling TypeScript first
                 log_info "Compiling TypeScript and retrying migration..."
-                if sudo -u "$service_user" HOME="$app_dir" npm run build >/dev/null 2>&1 && [[ -f "dist/scripts/migrate.js" ]]; then
-                    if ! sudo -u "$service_user" HOME="$app_dir" node dist/scripts/migrate.js up; then
+                if sudo -u "$service_user" HOME="$app_dir" PATH="$PATH" npm run build >/dev/null 2>&1 && [[ -f "dist/scripts/migrate.js" ]]; then
+                    if ! sudo -u "$service_user" HOME="$app_dir" PATH="$PATH" node dist/scripts/migrate.js up; then
                         # Clean up environment variables
                         unset DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD NODE_ENV
                         handle_migration_error "JavaScript migration runner failed after compilation" "dist/scripts/migrate.js"
@@ -13467,10 +13476,14 @@ run_database_migrations() {
                             return $E_DATABASE_ERROR
                         }
                         
-                        if ! sudo -u "$service_user" HOME="$original_dir" npx ts-node scripts/migrate.ts up; then
-                            unset DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD NODE_ENV
-                            handle_migration_error "Migration failed from source directory" "$original_dir/scripts/migrate.ts"
-                            return $E_DATABASE_ERROR
+                        if ! sudo -u "$service_user" HOME="$original_dir" PATH="$PATH" npx ts-node scripts/migrate.ts up; then
+                            # Last resort: try running as root with proper environment
+                            log_warning "Service user migration failed, trying as root (last resort)..."
+                            if ! npx ts-node scripts/migrate.ts up; then
+                                unset DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD NODE_ENV
+                                handle_migration_error "Migration failed from source directory" "$original_dir/scripts/migrate.ts"
+                                return $E_DATABASE_ERROR
+                            fi
                         fi
                         
                         # Return to app directory

@@ -187,3 +187,17 @@ COMMENT ON TABLE backup_metadata IS 'Metadata for system backups used in recover
 COMMENT ON TABLE recovery_operations IS 'Tracks backup restoration activities';
 COMMENT ON TABLE emergency_contacts IS 'Contact information for incident response notifications';
 COMMENT ON TABLE incident_notifications IS 'Tracks notifications sent during incidents';
+
+-- Down migration (for rollback)
+-- DROP TRIGGER IF EXISTS update_emergency_contacts_updated_at ON emergency_contacts;
+-- DROP TRIGGER IF EXISTS update_kill_switch_activations_updated_at ON kill_switch_activations;
+-- DROP TRIGGER IF EXISTS update_kill_switch_timers_updated_at ON kill_switch_timers;
+-- DROP TRIGGER IF EXISTS update_incidents_updated_at ON incidents;
+-- DROP FUNCTION IF EXISTS update_updated_at_column();
+-- DROP TABLE IF EXISTS incident_notifications;
+-- DROP TABLE IF EXISTS emergency_contacts;
+-- DROP TABLE IF EXISTS recovery_operations;
+-- DROP TABLE IF EXISTS backup_metadata;
+-- DROP TABLE IF EXISTS kill_switch_activations;
+-- DROP TABLE IF EXISTS kill_switch_timers;
+-- DROP TABLE IF EXISTS incidents;

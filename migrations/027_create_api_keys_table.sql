@@ -26,3 +26,6 @@ COMMENT ON COLUMN api_keys.key_hash IS 'SHA-256 hash of the API key for secure s
 COMMENT ON COLUMN api_keys.permissions IS 'JSON array of permissions granted to this API key';
 COMMENT ON COLUMN api_keys.last_used IS 'Timestamp of last API key usage';
 COMMENT ON COLUMN api_keys.expires_at IS 'Optional expiration timestamp for the API key';
+
+-- Down migration (for rollback)
+-- DROP TABLE IF EXISTS api_keys;

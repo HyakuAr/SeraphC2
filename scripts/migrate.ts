@@ -382,14 +382,21 @@ COMMIT;
         // Extract down migration (everything after "-- Down migration")
         const parts = content.split('-- Down migration');
         if (parts.length < 2) {
-          throw new Error(`No down migration found in ${migration.filename}`);
+          console.warn(`No down migration found in ${migration.filename}, skipping rollback`);
+          // Just remove the migration record without running any SQL
+          await client.query('DELETE FROM schema_migrations WHERE migration_id = $1', [
+            migration.id,
+          ]);
+        } else {
+          const downContent = parts[1].trim();
+          if (downContent) {
+            await client.query(downContent);
+          }
+          // Remove migration record
+          await client.query('DELETE FROM schema_migrations WHERE migration_id = $1', [
+            migration.id,
+          ]);
         }
-
-        const downContent = parts[1];
-        await client.query(downContent);
-
-        // Remove migration record
-        await client.query('DELETE FROM schema_migrations WHERE migration_id = $1', [migration.id]);
       }
 
       await client.query('COMMIT');

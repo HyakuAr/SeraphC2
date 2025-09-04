@@ -38,3 +38,6 @@ COMMENT ON COLUMN export_jobs.file_path IS 'Path to the generated export file';
 COMMENT ON COLUMN export_jobs.file_size IS 'Size of the generated export file in bytes';
 COMMENT ON COLUMN export_jobs.filters IS 'JSON object containing export filters';
 COMMENT ON COLUMN export_jobs.fields IS 'JSON array of fields to include in export';
+
+-- Down migration (for rollback)
+-- DROP TABLE IF EXISTS export_jobs;

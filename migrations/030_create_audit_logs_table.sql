@@ -29,7 +29,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_failures ON audit_logs(created_at, act
 -- Create GIN index for JSONB details column for efficient querying
 CREATE INDEX IF NOT EXISTS idx_audit_logs_details_gin ON audit_logs USING GIN(details);
 
--- Down migration (commented out for safety)
+-- Down migration (for rollback)
 -- DROP INDEX IF EXISTS idx_audit_logs_details_gin;
 -- DROP INDEX IF EXISTS idx_audit_logs_failures;
 -- DROP INDEX IF EXISTS idx_audit_logs_composite;

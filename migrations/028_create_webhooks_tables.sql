@@ -66,3 +66,8 @@ COMMENT ON COLUMN webhook_events.data IS 'JSON payload data for the event';
 COMMENT ON TABLE webhook_deliveries IS 'Delivery attempts and results for webhook events';
 COMMENT ON COLUMN webhook_deliveries.attempts IS 'Number of delivery attempts made';
 COMMENT ON COLUMN webhook_deliveries.next_retry_at IS 'Timestamp for next retry attempt';
+
+-- Down migration (for rollback)
+-- DROP TABLE IF EXISTS webhook_deliveries;
+-- DROP TABLE IF EXISTS webhook_events;
+-- DROP TABLE IF EXISTS webhooks;
