@@ -10778,6 +10778,10 @@ DB_PORT=${CONFIG[db_port]}
 DB_NAME=${CONFIG[db_name]}
 DB_USER=${CONFIG[db_user]}
 DB_PASSWORD=${CONFIG[db_password]}
+DB_SSL=false
+
+# Full database connection URL (with SSL disabled for local installations)
+DATABASE_URL=postgresql://${CONFIG[db_user]}:${CONFIG[db_password]}@${CONFIG[db_host]}:${CONFIG[db_port]}/${CONFIG[db_name]}?sslmode=disable
 
 # Connection pool configuration
 DB_POOL_MIN=5

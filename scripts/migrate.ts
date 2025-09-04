@@ -58,7 +58,9 @@ class MigrationManager {
         database: url.pathname.slice(1),
         user: url.username,
         password: url.password,
-        ssl: url.searchParams.get('ssl') === 'true' || process.env.NODE_ENV === 'production',
+        ssl:
+          url.searchParams.get('ssl') === 'true' ||
+          (url.searchParams.get('sslmode') !== 'disable' && process.env.NODE_ENV === 'production'),
       };
     } else {
       // Use individual environment variables
@@ -68,7 +70,9 @@ class MigrationManager {
         database: process.env.DB_NAME || 'seraphc2',
         user: process.env.DB_USER || 'postgres',
         password: process.env.DB_PASSWORD || '',
-        ssl: process.env.DB_SSL === 'true' || process.env.NODE_ENV === 'production',
+        ssl:
+          process.env.DB_SSL === 'true' ||
+          (process.env.NODE_ENV === 'production' && process.env.DB_SSL !== 'false'),
       };
     }
   }
