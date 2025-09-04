@@ -11263,9 +11263,8 @@ create_systemd_service_file() {
 [Unit]
 Description=SeraphC2 Command and Control Server
 Documentation=https://github.com/seraphc2/seraphc2
-After=network.target network-online.target postgresql.service redis.service
-Wants=network-online.target
-Requires=postgresql.service redis.service
+After=network.target network-online.target postgresql.service redis-server.service
+Wants=network-online.target postgresql.service redis-server.service
 
 [Service]
 Type=simple
@@ -11348,6 +11347,21 @@ enable_and_start_service() {
         return $E_SERVICE_ERROR
     fi
     
+    # Ensure dependencies are running before starting SeraphC2
+    log_info "Checking service dependencies..."
+    
+    # Check PostgreSQL
+    if ! systemctl is-active --quiet postgresql; then
+        log_info "Starting PostgreSQL service..."
+        systemctl start postgresql || log_warning "Failed to start PostgreSQL"
+    fi
+    
+    # Check Redis
+    if ! systemctl is-active --quiet redis-server; then
+        log_info "Starting Redis service..."
+        systemctl start redis-server || log_warning "Failed to start Redis"
+    fi
+    
     # Start the service
     log_info "Starting $service_name service..."
     if systemctl start "$service_name"; then
@@ -11366,7 +11380,28 @@ enable_and_start_service() {
     else
         log_error "Failed to start $service_name service"
         show_service_status "$service_name"
-        return $E_SERVICE_ERROR
+        
+        # Try to diagnose the issue
+        log_info "Attempting to diagnose service startup issue..."
+        
+        # Check if it's a dependency issue
+        if journalctl -u "$service_name" --no-pager -l -n 10 | grep -i "dependency"; then
+            log_warning "Dependency issue detected, trying to fix..."
+            
+            # Try starting dependencies manually
+            systemctl start postgresql redis-server || true
+            sleep 2
+            
+            # Try starting SeraphC2 again
+            if systemctl start "$service_name"; then
+                log_success "Service started successfully after dependency fix"
+            else
+                log_error "Service still failed to start after dependency fix"
+                return $E_SERVICE_ERROR
+            fi
+        else
+            return $E_SERVICE_ERROR
+        fi
     fi
     
     return 0
@@ -14044,6 +14079,13 @@ configure_redis_service() {
         return 0
     fi
     
+    # Try to fix Redis service issues automatically
+    log_warning "Attempting to fix Redis service configuration..."
+    if attempt_redis_final_fix; then
+        log_success "Redis service fixed successfully"
+        return 0
+    fi
+    
     log_warning "Redis service configuration had issues but continuing installation"
     return 0  # Return success to continue installation
 }
@@ -14479,9 +14521,10 @@ restart_redis_service() {
             if systemctl start "$redis_service_name" 2>/dev/null; then
                 log_success "Redis service started successfully after reset"
             else
-                log_warning "All restart attempts failed, but continuing installation..."
+                log_warning "All restart attempts failed, but continuing installation anyway"
                 log_warning "Redis may need manual configuration after installation"
-                # Don't return error - force continue
+                # Return success to continue installation - Redis issues will be handled later
+                return 0
             fi
         fi
     fi
@@ -14590,6 +14633,11 @@ setup_redis_cache() {
 # Final attempt to fix Redis issues
 attempt_redis_final_fix() {
     log_info "Attempting comprehensive Redis fix..."
+    
+    # Stop any existing Redis processes
+    pkill -f redis-server || true
+    systemctl stop redis-server || true
+    systemctl stop redis || true
     
     # Determine Redis service name
     local redis_service_name
