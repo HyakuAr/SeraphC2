@@ -11356,10 +11356,28 @@ enable_and_start_service() {
         systemctl start postgresql || log_warning "Failed to start PostgreSQL"
     fi
     
-    # Check Redis
-    if ! systemctl is-active --quiet redis-server; then
+    # Check Redis - try both service names
+    local redis_started=false
+    for redis_service in "redis-server" "redis"; do
+        if systemctl is-active --quiet "$redis_service" 2>/dev/null; then
+            redis_started=true
+            break
+        fi
+    done
+    
+    if [[ "$redis_started" != "true" ]]; then
         log_info "Starting Redis service..."
-        systemctl start redis-server || log_warning "Failed to start Redis"
+        for redis_service in "redis-server" "redis"; do
+            if systemctl start "$redis_service" 2>/dev/null; then
+                log_success "Started Redis service: $redis_service"
+                redis_started=true
+                break
+            fi
+        done
+        
+        if [[ "$redis_started" != "true" ]]; then
+            log_warning "Failed to start Redis service - SeraphC2 may not function properly"
+        fi
     fi
     
     # Start the service
@@ -12983,7 +13001,18 @@ create_seraphc2_database() {
                 return $E_DATABASE_ERROR
             fi
             
-            log_success "Database and user already exist, password updated"
+            # Ensure migration tracking table exists for existing database
+            log_info "Ensuring migration tracking table exists..."
+            sudo -u postgres psql "$db_name" -c "
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    migration_id VARCHAR(255) PRIMARY KEY,
+                    applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    execution_time_ms INTEGER DEFAULT 0
+                );
+                COMMENT ON TABLE schema_migrations IS 'Tracks applied database migrations';
+            " 2>/dev/null || log_warning "Could not ensure migration table exists"
+            
+            log_success "Database and user already exist, password updated, migration table ensured"
             return 0
         fi
     fi
@@ -13320,15 +13349,18 @@ COMMIT;
     local migration_exit_code=$?
     
     if [[ $migration_exit_code -ne 0 ]]; then
-        # Check if error is due to duplicate table (code 42P07)
-        if echo "$migration_output" | grep -q "42P07\|already exists"; then
-            log_warning "Migration $filename: Table already exists, marking as completed"
+        # Check if error is due to duplicate table (code 42P07) or other "already exists" errors
+        if echo "$migration_output" | grep -q "42P07\|already exists\|duplicate key value\|relation.*already exists"; then
+            log_warning "Migration $filename: Objects already exist, marking as completed"
+            log_debug "Migration output: $migration_output"
             
-            # Just record the migration as applied without executing the content
+            # Record the migration as applied without executing the content
             psql -h "$db_host" -p "$db_port" -U "$db_user" -d "$db_name" \
                 -c "INSERT INTO schema_migrations (migration_id, applied_at, execution_time_ms) 
                     VALUES ('$migration_id', CURRENT_TIMESTAMP, 0)
-                    ON CONFLICT (migration_id) DO NOTHING;" >/dev/null 2>&1 || true
+                    ON CONFLICT (migration_id) DO NOTHING;" >/dev/null 2>&1 || {
+                log_warning "Could not record migration as applied, but continuing..."
+            }
         else
             log_error "Failed to execute migration: $filename"
             log_error "Error details: $migration_output"
@@ -13425,7 +13457,14 @@ run_database_migrations() {
         return $E_DATABASE_ERROR
     fi
     
-    # Step 1: Create backup before migrations
+    # Step 1: Ensure migration tracking table exists
+    log_info "Ensuring migration tracking table exists..."
+    if ! initialize_migration_table; then
+        log_error "Failed to initialize migration tracking table"
+        return $E_DATABASE_ERROR
+    fi
+
+    # Step 2: Create backup before migrations
     if [[ "${CONFIG[skip_backup]}" != "true" ]]; then
         if ! create_database_backup "pre_migration"; then
             log_warning "Failed to create pre-migration backup, continuing anyway"
@@ -14042,6 +14081,24 @@ configure_redis_service() {
             ;;
     esac
     
+    # Check if Redis is installed first
+    if ! command -v redis-server &> /dev/null; then
+        log_warning "Redis server not found, installing..."
+        case "${SYSTEM_INFO[package_manager]}" in
+            "apt")
+                apt-get update
+                apt-get install -y redis-server
+                ;;
+            "yum"|"dnf")
+                ${SYSTEM_INFO[package_manager]} install -y redis
+                ;;
+            *)
+                log_error "Unsupported package manager for Redis installation"
+                return $E_PACKAGE_INSTALL_FAILED
+                ;;
+        esac
+    fi
+
     # Enable Redis service (non-critical)
     if ! systemctl enable "$redis_service_name" 2>/dev/null; then
         log_warning "Failed to enable Redis service - trying alternative methods"
