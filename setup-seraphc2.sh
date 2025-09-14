@@ -14951,14 +14951,15 @@ configure_redis_security() {
     # Disable dangerous commands for security - ignore errors
     if cat >> "$redis_conf_path" 2>/dev/null << 'EOF'
 
-# Security: Disable dangerous commands (correct syntax for Redis 7.0+)
-rename-command FLUSHDB ""
-rename-command FLUSHALL ""
-rename-command DEBUG ""
-rename-command CONFIG ""
-rename-command SHUTDOWN ""
-rename-command EVAL ""
-rename-command SCRIPT ""
+# Security: Disable dangerous commands (Redis 7.0+ compatible)
+# Note: Redis 7.0+ doesn't support renaming to empty string, use random names instead
+rename-command FLUSHDB "FLUSHDB_DISABLED_$(openssl rand -hex 8)"
+rename-command FLUSHALL "FLUSHALL_DISABLED_$(openssl rand -hex 8)"
+rename-command DEBUG "DEBUG_DISABLED_$(openssl rand -hex 8)"
+rename-command CONFIG "CONFIG_DISABLED_$(openssl rand -hex 8)"
+rename-command SHUTDOWN "SHUTDOWN_DISABLED_$(openssl rand -hex 8)"
+rename-command EVAL "EVAL_DISABLED_$(openssl rand -hex 8)"
+rename-command SCRIPT "SCRIPT_DISABLED_$(openssl rand -hex 8)"
 EOF
     then
         log_debug "Added Redis security commands"

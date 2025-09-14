@@ -24,7 +24,8 @@ export function createIncidentRoutes(
   const logger = new Logger('IncidentRoutes' as any);
 
   // Apply authentication to all routes
-  router.use(/* authMiddleware.authenticate() */);
+  // TODO: Uncomment when authMiddleware is properly implemented
+  // router.use(authMiddleware.authenticate());
 
   /**
    * Trigger self-destruct for specific implants
