@@ -15051,7 +15051,6 @@ configure_redis_security() {
     rm -f "$temp_config"
     
     log_debug "Redis security configuration completed"
-    fi
     
     # Configure protected mode - ignore errors
     if sed -i 's/^protected-mode .*/protected-mode yes/' "$redis_conf_path" 2>/dev/null; then
