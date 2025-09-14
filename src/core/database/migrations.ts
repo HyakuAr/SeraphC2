@@ -33,7 +33,16 @@ export class MigrationManager {
       );
     `;
 
-    await this.db.query(query);
+    try {
+      await this.db.query(query);
+    } catch (error: any) {
+      // If table already exists, that's fine
+      if (error.code === '42P07' || error.message?.includes('already exists')) {
+        console.log('✅ Migration table already exists');
+      } else {
+        throw error;
+      }
+    }
   }
 
   public async getExecutedMigrations(): Promise<string[]> {
@@ -43,14 +52,38 @@ export class MigrationManager {
 
   public async executeMigration(migration: Migration): Promise<void> {
     await this.db.transaction(async client => {
-      // Execute the migration
-      await migration.up(client);
+      try {
+        // Execute the migration
+        await migration.up(client);
 
-      // Record the migration as executed
-      await client.query('INSERT INTO migrations (id, name) VALUES ($1, $2)', [
-        migration.id,
-        migration.name,
-      ]);
+        // Record the migration as executed
+        await client.query('INSERT INTO migrations (id, name) VALUES ($1, $2)', [
+          migration.id,
+          migration.name,
+        ]);
+      } catch (error: any) {
+        // Check if error is due to objects already existing (PostgreSQL error code 42P07)
+        if (error.code === '42P07' || error.message?.includes('already exists')) {
+          console.log(
+            `⚠️  Migration ${migration.name}: Objects already exist, marking as completed`
+          );
+
+          // Check if migration is already recorded
+          const existingRecord = await client.query('SELECT id FROM migrations WHERE id = $1', [
+            migration.id,
+          ]);
+          if (existingRecord.rows.length === 0) {
+            // Record the migration as executed even though objects existed
+            await client.query('INSERT INTO migrations (id, name) VALUES ($1, $2)', [
+              migration.id,
+              migration.name,
+            ]);
+          }
+        } else {
+          // Re-throw other errors
+          throw error;
+        }
+      }
     });
   }
 

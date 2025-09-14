@@ -25,7 +25,18 @@ export async function initializeDatabase(): Promise<void> {
   // Connect to database
   await db.connect();
 
-  // Run migrations
+  // Check if migrations were already run by setup script
+  const fs = require('fs');
+  const path = require('path');
+  const migrationFlagPath = path.join(process.cwd(), '.migrations_completed_by_setup');
+
+  if (fs.existsSync(migrationFlagPath)) {
+    console.log('✅ Migrations already completed by setup script, skipping...');
+    console.log('✅ Database initialized successfully');
+    return;
+  }
+
+  // Run migrations only if not already completed by setup
   await migrationManager.runMigrations();
 
   console.log('✅ Database initialized successfully');

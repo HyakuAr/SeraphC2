@@ -254,3 +254,5 @@ persistence/
 
 .kiro/
 tasks/
+
+script-install-output.txt
