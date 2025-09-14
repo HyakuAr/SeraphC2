@@ -16,6 +16,7 @@ import { MfaService } from '../core/auth/mfa.service';
 import { PostgresBackupCodesRepository } from '../core/repositories/backup-codes.repository';
 import { OperatorRepository } from '../core/repositories/interfaces';
 import { ImplantManager } from '../core/engine/implant-manager';
+import { CommandRouter } from '../core/engine/command-router';
 import { CommandManager } from '../core/engine/command-manager';
 import { FileManager } from '../core/engine/file-manager';
 import { TaskSchedulerService } from '../core/services/task-scheduler.service';
@@ -73,6 +74,7 @@ export class SeraphC2Server {
   private rbacService: RBACService;
   private mfaService: MfaService;
   private implantManager: ImplantManager;
+  private commandRouter: CommandRouter;
   private commandManager: CommandManager;
   private fileManager: FileManager;
   private taskSchedulerService: TaskSchedulerService;
@@ -110,11 +112,8 @@ export class SeraphC2Server {
     this.rbacService = new RBACService(this.operatorRepository);
     this.webAuthMiddleware = new AuthMiddleware(this.authService, this.rbacService);
     this.implantManager = new ImplantManager();
-    this.commandManager = new CommandManager(
-      // We'll need to create a command router - for now using placeholder
-      {} as any,
-      this.implantManager
-    );
+    this.commandRouter = new CommandRouter(this.implantManager);
+    this.commandManager = new CommandManager(this.commandRouter, this.implantManager);
     this.fileManager = new FileManager(this.implantManager, this.commandManager);
     this.taskSchedulerService = new TaskSchedulerService(getPool(), this.commandManager, {
       maxConcurrentTasks: 10,
@@ -481,6 +480,7 @@ export class SeraphC2Server {
 
           // Stop managers
           this.implantManager.stop();
+          this.commandRouter.stop();
           this.commandManager.stop();
           this.fileManager.stop();
 

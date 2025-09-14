@@ -150,6 +150,12 @@ SCRIPT_LOG_FILE=""
 SPINNER_PID=""
 CLEANUP_REQUIRED="false"
 REDIS_SETUP_FAILED="false"
+RESUME_INSTALLATION="false"
+PREVIOUS_INSTALL_DETECTED="false"
+
+# Installation state file for persistence
+readonly INSTALL_STATE_FILE="/var/lib/seraphc2/install_state.conf"
+readonly INSTALL_LOCK_FILE="/var/lib/seraphc2/install.lock"
 
 # Node.js version tracking
 NODEJS_CURRENT_VERSION=""
@@ -545,14 +551,14 @@ perform_rollback() {
         fi
     fi
     
-    # 4. Rollback Redis configuration
+    # 4. Rollback Redis configuration (if configured)
     if [[ "${INSTALL_STATE[redis_configured]}" == "true" ]]; then
         log_info "Rolling back Redis configuration..."
         if rollback_redis_configuration; then
             log_success "Redis rollback completed"
         else
-            log_warning "Failed to rollback Redis configuration"
-            ((rollback_errors++))
+            log_warning "Failed to rollback Redis configuration (non-critical)"
+            # Don't increment errors for Redis since it's not critical
         fi
     fi
     
@@ -3862,6 +3868,11 @@ OPTIONS:
                            Performs routine maintenance operations
                            Default: No automatic maintenance
 
+    --cleanup-only         Perform comprehensive cleanup without installation
+                           Detects and removes previous installations and conflicts
+                           Useful for preparing system for fresh installation
+                           Default: Cleanup is performed before installation
+
     --backup-before-update Create backup before performing updates
                            Default: Enabled (recommended)
 
@@ -3928,6 +3939,9 @@ UPDATE AND MAINTENANCE EXAMPLES:
 
     # Run maintenance tasks
     sudo $0 --maintenance
+
+    # Clean up previous installations and conflicts
+    sudo $0 --cleanup-only
 
 CONFIGURATION:
     The script uses secure defaults for all configuration options:
@@ -4130,6 +4144,9 @@ parse_arguments() {
                 ;;
             --maintenance)
                 CONFIG[mode]="maintenance"
+                ;;
+            --cleanup-only)
+                CONFIG[mode]="cleanup-only"
                 ;;
             --component=*)
                 CONFIG[update_component]="${arg#*=}"
@@ -8471,50 +8488,89 @@ check_system_prerequisites() {
 
 # Pre-installation cleanup and conflict detection
 perform_pre_installation_cleanup() {
-    log_info "Performing pre-installation cleanup and conflict detection..."
+    log_info "Performing comprehensive pre-installation cleanup and conflict detection..."
     
     local cleanup_performed=false
     local conflicts_detected=false
+    local critical_conflicts=false
     
-    # 1. Check for broken Redis configurations from previous failed installations
+    # 1. Check for existing SeraphC2 installation
+    log_info "Checking for existing SeraphC2 installation..."
+    if detect_existing_installation; then
+        cleanup_performed=true
+        conflicts_detected=true
+    fi
+    
+    # 2. Check for broken Redis configurations from previous failed installations
     log_info "Checking Redis configuration integrity..."
     if check_and_fix_redis_config; then
         cleanup_performed=true
     fi
     
-    # 2. Check for orphaned SeraphC2 processes
+    # 3. Check for orphaned SeraphC2 processes
     log_info "Checking for orphaned SeraphC2 processes..."
     if cleanup_orphaned_processes; then
         cleanup_performed=true
     fi
     
-    # 3. Check for conflicting services on required ports
+    # 4. Check for conflicting services on required ports
     log_info "Checking for port conflicts..."
     if resolve_port_conflicts; then
         conflicts_detected=true
     fi
     
-    # 4. Check for corrupted systemd service files
+    # 5. Check for corrupted systemd service files
     log_info "Checking systemd service integrity..."
     if cleanup_systemd_services; then
         cleanup_performed=true
     fi
     
-    # 5. Check for incomplete database migrations
+    # 6. Check for incomplete database migrations
     log_info "Checking database state..."
     if cleanup_database_state; then
         cleanup_performed=true
     fi
     
-    # 6. Check for SSL certificate conflicts
+    # 7. Check for SSL certificate conflicts
     log_info "Checking SSL certificate state..."
     if cleanup_ssl_certificates; then
         cleanup_performed=true
     fi
     
-    # 7. Check for firewall rule conflicts
+    # 8. Check for firewall rule conflicts
     log_info "Checking firewall configuration..."
     if cleanup_firewall_rules; then
+        cleanup_performed=true
+    fi
+    
+    # 9. Check for conflicting Node.js installations
+    log_info "Checking Node.js installation conflicts..."
+    if check_nodejs_conflicts; then
+        conflicts_detected=true
+    fi
+    
+    # 10. Check for PostgreSQL conflicts
+    log_info "Checking PostgreSQL installation conflicts..."
+    if check_postgresql_conflicts; then
+        conflicts_detected=true
+    fi
+    
+    # 11. Check for application directory conflicts
+    log_info "Checking application directory conflicts..."
+    if check_directory_conflicts; then
+        cleanup_performed=true
+        conflicts_detected=true
+    fi
+    
+    # 12. Check for user account conflicts
+    log_info "Checking user account conflicts..."
+    if check_user_conflicts; then
+        conflicts_detected=true
+    fi
+    
+    # 13. Check for leftover files and configurations
+    log_info "Checking for leftover files and configurations..."
+    if check_leftover_files; then
         cleanup_performed=true
     fi
     
@@ -8530,6 +8586,20 @@ perform_pre_installation_cleanup() {
         log_info "Installation will proceed with clean environment"
     fi
     
+    if [[ "$critical_conflicts" == "true" ]]; then
+        log_error "Critical conflicts detected that require manual intervention"
+        log_error "Please resolve these conflicts before running the installation again"
+        return 1
+    fi
+    
+    # Final validation - ensure system is ready for installation
+    log_info "Performing final pre-installation validation..."
+    if ! validate_pre_installation_state; then
+        log_error "System is not ready for installation after cleanup"
+        return 1
+    fi
+    
+    log_success "System is clean and ready for SeraphC2 installation"
     return 0
 }
 
@@ -8716,6 +8786,480 @@ cleanup_firewall_rules() {
     esac
     
     return $([[ "$cleaned" == "true" ]] && echo 0 || echo 1)
+}
+
+# Detect existing SeraphC2 installation and handle conflicts
+detect_existing_installation() {
+    local found_installation=false
+    local installation_type=""
+    
+    log_debug "Scanning for existing SeraphC2 installation..."
+    
+    # Check for systemd service
+    if systemctl list-unit-files | grep -q "seraphc2.service"; then
+        installation_type="systemd service"
+        found_installation=true
+        log_warning "Found existing SeraphC2 systemd service"
+    fi
+    
+    # Check for application directory
+    if [[ -d "${CONFIG[app_dir]}" ]]; then
+        if [[ -f "${CONFIG[app_dir]}/package.json" ]] && grep -q "seraphc2" "${CONFIG[app_dir]}/package.json" 2>/dev/null; then
+            installation_type="application files"
+            found_installation=true
+            log_warning "Found existing SeraphC2 application directory: ${CONFIG[app_dir]}"
+        fi
+    fi
+    
+    # Check for database
+    if command -v psql >/dev/null 2>&1 && systemctl is-active postgresql >/dev/null 2>&1; then
+        if sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "${CONFIG[db_name]}"; then
+            installation_type="database"
+            found_installation=true
+            log_warning "Found existing SeraphC2 database: ${CONFIG[db_name]}"
+        fi
+    fi
+    
+    # Check for configuration files
+    if [[ -d "${CONFIG[config_dir]}" ]]; then
+        installation_type="configuration files"
+        found_installation=true
+        log_warning "Found existing SeraphC2 configuration directory: ${CONFIG[config_dir]}"
+    fi
+    
+    # Check for running processes
+    if pgrep -f "seraphc2" >/dev/null 2>&1; then
+        installation_type="running processes"
+        found_installation=true
+        log_warning "Found running SeraphC2 processes"
+    fi
+    
+    if [[ "$found_installation" == "true" ]]; then
+        echo ""
+        log_warning "Existing SeraphC2 installation detected ($installation_type)"
+        echo -e "${YELLOW}This could cause conflicts with the new installation.${NC}"
+        echo ""
+        echo "Options:"
+        echo "1. Clean uninstall and reinstall (recommended)"
+        echo "2. Skip cleanup and continue (may cause issues)"
+        echo "3. Exit and manually resolve conflicts"
+        echo ""
+        
+        while true; do
+            read -p "Choose an option [1-3]: " choice
+            case $choice in
+                1)
+                    log_info "Performing clean uninstall of existing installation..."
+                    if perform_clean_uninstall; then
+                        log_success "Clean uninstall completed successfully"
+                        return 0
+                    else
+                        log_error "Clean uninstall failed"
+                        return 1
+                    fi
+                    ;;
+                2)
+                    log_warning "Skipping cleanup - proceeding with existing installation"
+                    log_warning "This may cause installation issues or conflicts"
+                    return 1
+                    ;;
+                3)
+                    log_info "Exiting for manual conflict resolution"
+                    log_info "Please remove the existing installation manually and run this script again"
+                    exit 0
+                    ;;
+                *)
+                    echo "Please enter 1, 2, or 3"
+                    ;;
+            esac
+        done
+    fi
+    
+    return 1
+}
+
+# Perform clean uninstall of existing SeraphC2 installation
+perform_clean_uninstall() {
+    log_info "Starting clean uninstall process..."
+    
+    local uninstall_errors=0
+    
+    # Stop and disable systemd service
+    if systemctl list-unit-files | grep -q "seraphc2.service"; then
+        log_info "Stopping and disabling SeraphC2 service..."
+        systemctl stop seraphc2 2>/dev/null || ((uninstall_errors++))
+        systemctl disable seraphc2 2>/dev/null || ((uninstall_errors++))
+        rm -f /etc/systemd/system/seraphc2.service
+        rm -rf /etc/systemd/system/seraphc2.service.d/
+        systemctl daemon-reload
+    fi
+    
+    # Kill any running processes
+    if pgrep -f "seraphc2" >/dev/null 2>&1; then
+        log_info "Terminating SeraphC2 processes..."
+        pkill -f "seraphc2" 2>/dev/null || true
+        sleep 2
+        pkill -9 -f "seraphc2" 2>/dev/null || true
+    fi
+    
+    # Remove application directory
+    if [[ -d "${CONFIG[app_dir]}" ]]; then
+        log_info "Removing application directory: ${CONFIG[app_dir]}"
+        rm -rf "${CONFIG[app_dir]}" || ((uninstall_errors++))
+    fi
+    
+    # Remove configuration directory
+    if [[ -d "${CONFIG[config_dir]}" ]]; then
+        log_info "Removing configuration directory: ${CONFIG[config_dir]}"
+        rm -rf "${CONFIG[config_dir]}" || ((uninstall_errors++))
+    fi
+    
+    # Remove log directory
+    if [[ -d "${CONFIG[log_dir]}" ]]; then
+        log_info "Removing log directory: ${CONFIG[log_dir]}"
+        rm -rf "${CONFIG[log_dir]}" || ((uninstall_errors++))
+    fi
+    
+    # Handle database cleanup
+    if command -v psql >/dev/null 2>&1 && systemctl is-active postgresql >/dev/null 2>&1; then
+        if sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "${CONFIG[db_name]}"; then
+            if confirm_action "Remove SeraphC2 database and user?" "y"; then
+                log_info "Removing SeraphC2 database and user..."
+                sudo -u postgres dropdb "${CONFIG[db_name]}" 2>/dev/null || ((uninstall_errors++))
+                sudo -u postgres dropuser "${CONFIG[db_user]}" 2>/dev/null || ((uninstall_errors++))
+            fi
+        fi
+    fi
+    
+    # Remove service user
+    if id "${CONFIG[service_user]}" >/dev/null 2>&1; then
+        if confirm_action "Remove SeraphC2 service user?" "y"; then
+            log_info "Removing service user: ${CONFIG[service_user]}"
+            userdel -r "${CONFIG[service_user]}" 2>/dev/null || ((uninstall_errors++))
+        fi
+    fi
+    
+    # Clean up firewall rules
+    case "${SYSTEM_INFO[firewall_system]}" in
+        "ufw")
+            ufw --force delete allow "${CONFIG[http_port]}" 2>/dev/null || true
+            ufw --force delete allow "${CONFIG[https_port]}" 2>/dev/null || true
+            ufw --force delete allow "${CONFIG[implant_port]}" 2>/dev/null || true
+            ;;
+        "firewalld")
+            firewall-cmd --permanent --remove-port="${CONFIG[http_port]}/tcp" 2>/dev/null || true
+            firewall-cmd --permanent --remove-port="${CONFIG[https_port]}/tcp" 2>/dev/null || true
+            firewall-cmd --permanent --remove-port="${CONFIG[implant_port]}/tcp" 2>/dev/null || true
+            firewall-cmd --reload 2>/dev/null || true
+            ;;
+    esac
+    
+    # Remove logrotate configuration
+    rm -f /etc/logrotate.d/seraphc2 2>/dev/null || true
+    
+    # Remove rsyslog configuration
+    rm -f /etc/rsyslog.d/30-seraphc2.conf 2>/dev/null || true
+    
+    if [[ $uninstall_errors -eq 0 ]]; then
+        log_success "Clean uninstall completed successfully"
+        return 0
+    else
+        log_warning "Clean uninstall completed with $uninstall_errors errors"
+        return 1
+    fi
+}
+
+# Check for Node.js installation conflicts
+check_nodejs_conflicts() {
+    local conflicts=false
+    
+    # Check for conflicting Node.js versions
+    if command -v node >/dev/null 2>&1; then
+        local current_version=$(node --version 2>/dev/null | sed 's/v//')
+        local major_version=$(echo "$current_version" | cut -d. -f1)
+        
+        if [[ -n "$major_version" ]] && [[ "$major_version" -lt 18 ]]; then
+            log_warning "Found outdated Node.js version: v$current_version (minimum required: v18)"
+            if confirm_action "Update Node.js to a compatible version?" "y"; then
+                log_info "Node.js will be updated during installation"
+                conflicts=true
+            fi
+        fi
+    fi
+    
+    # Check for conflicting npm configurations
+    if [[ -f "${CONFIG[app_dir]}/.npmrc" ]]; then
+        log_warning "Found existing npm configuration that may conflict"
+        if confirm_action "Remove conflicting npm configuration?" "y"; then
+            rm -f "${CONFIG[app_dir]}/.npmrc"
+            conflicts=true
+        fi
+    fi
+    
+    return $([[ "$conflicts" == "true" ]] && echo 0 || echo 1)
+}
+
+# Check for PostgreSQL installation conflicts
+check_postgresql_conflicts() {
+    local conflicts=false
+    
+    # Check for PostgreSQL version compatibility
+    if command -v psql >/dev/null 2>&1; then
+        local pg_version=$(psql --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)
+        if [[ -n "$pg_version" ]]; then
+            local major_version=$(echo "$pg_version" | cut -d. -f1)
+            if [[ "$major_version" -lt 13 ]]; then
+                log_warning "Found PostgreSQL version $pg_version (minimum required: 13)"
+                log_warning "PostgreSQL may need to be upgraded"
+                conflicts=true
+            fi
+        fi
+    fi
+    
+    # Check for conflicting PostgreSQL configurations
+    local pg_hba_conf="/etc/postgresql/*/main/pg_hba.conf"
+    if ls $pg_hba_conf >/dev/null 2>&1; then
+        if grep -q "seraphc2" $pg_hba_conf 2>/dev/null; then
+            log_warning "Found existing SeraphC2 PostgreSQL configuration"
+            if confirm_action "Clean existing PostgreSQL configuration?" "y"; then
+                # Remove SeraphC2-specific lines from pg_hba.conf
+                for conf_file in $pg_hba_conf; do
+                    if [[ -f "$conf_file" ]]; then
+                        sed -i '/seraphc2/d' "$conf_file" 2>/dev/null || true
+                    fi
+                done
+                systemctl reload postgresql 2>/dev/null || true
+                conflicts=true
+            fi
+        fi
+    fi
+    
+    return $([[ "$conflicts" == "true" ]] && echo 0 || echo 1)
+}
+
+# Check for application directory conflicts
+check_directory_conflicts() {
+    local conflicts=false
+    
+    # Check if application directory exists and contains non-SeraphC2 files
+    if [[ -d "${CONFIG[app_dir]}" ]]; then
+        if [[ ! -f "${CONFIG[app_dir]}/package.json" ]] || ! grep -q "seraphc2" "${CONFIG[app_dir]}/package.json" 2>/dev/null; then
+            log_warning "Application directory ${CONFIG[app_dir]} exists but doesn't appear to be SeraphC2"
+            if confirm_action "Remove conflicting directory contents?" "n"; then
+                rm -rf "${CONFIG[app_dir]}"/*
+                conflicts=true
+            else
+                log_error "Cannot proceed with conflicting directory"
+                return 1
+            fi
+        fi
+    fi
+    
+    # Check for permission issues
+    for dir in "${CONFIG[app_dir]}" "${CONFIG[config_dir]}" "${CONFIG[log_dir]}"; do
+        if [[ -d "$dir" ]] && [[ ! -w "$dir" ]]; then
+            log_warning "Directory $dir exists but is not writable"
+            if confirm_action "Fix directory permissions?" "y"; then
+                chmod 755 "$dir" 2>/dev/null || true
+                conflicts=true
+            fi
+        fi
+    done
+    
+    return $([[ "$conflicts" == "true" ]] && echo 0 || echo 1)
+}
+
+# Check for user account conflicts
+check_user_conflicts() {
+    local conflicts=false
+    
+    # Check if service user exists but with wrong configuration
+    if id "${CONFIG[service_user]}" >/dev/null 2>&1; then
+        local user_home=$(getent passwd "${CONFIG[service_user]}" | cut -d: -f6)
+        local user_shell=$(getent passwd "${CONFIG[service_user]}" | cut -d: -f7)
+        
+        # Check if user has wrong home directory or shell
+        if [[ "$user_home" != "${CONFIG[app_dir]}" ]] || [[ "$user_shell" != "/bin/bash" && "$user_shell" != "/usr/bin/bash" ]]; then
+            log_warning "Service user ${CONFIG[service_user]} exists but has incorrect configuration"
+            log_info "Current home: $user_home (expected: ${CONFIG[app_dir]})"
+            log_info "Current shell: $user_shell (expected: /bin/bash)"
+            
+            if confirm_action "Reconfigure service user?" "y"; then
+                usermod -d "${CONFIG[app_dir]}" -s /bin/bash "${CONFIG[service_user]}" 2>/dev/null || true
+                conflicts=true
+            fi
+        fi
+    fi
+    
+    return $([[ "$conflicts" == "true" ]] && echo 0 || echo 1)
+}
+
+# Check for leftover files and configurations from previous installations
+check_leftover_files() {
+    local cleaned=false
+    
+    log_debug "Scanning for leftover SeraphC2 files..."
+    
+    # Check for leftover backup files
+    local backup_locations=(
+        "/var/backups/seraphc2"
+        "/tmp/seraphc2_*"
+        "/tmp/seraphc2-*"
+    )
+    
+    for location in "${backup_locations[@]}"; do
+        if ls $location >/dev/null 2>&1; then
+            log_warning "Found leftover backup files: $location"
+            if confirm_action "Remove leftover backup files?" "y"; then
+                rm -rf $location
+                cleaned=true
+            fi
+        fi
+    done
+    
+    # Check for leftover log files
+    local log_locations=(
+        "/var/log/seraphc2*"
+        "/var/log/syslog*seraphc2*"
+        "/tmp/*seraphc2*.log"
+    )
+    
+    for location in "${log_locations[@]}"; do
+        if ls $location >/dev/null 2>&1; then
+            log_warning "Found leftover log files: $location"
+            if confirm_action "Remove leftover log files?" "y"; then
+                rm -rf $location
+                cleaned=true
+            fi
+        fi
+    done
+    
+    # Check for leftover cron jobs
+    if crontab -l 2>/dev/null | grep -q "seraphc2"; then
+        log_warning "Found SeraphC2 cron jobs"
+        if confirm_action "Remove SeraphC2 cron jobs?" "y"; then
+            crontab -l 2>/dev/null | grep -v "seraphc2" | crontab -
+            cleaned=true
+        fi
+    fi
+    
+    # Check for leftover systemd timers
+    if systemctl list-timers --all | grep -q "seraphc2"; then
+        log_warning "Found SeraphC2 systemd timers"
+        if confirm_action "Remove SeraphC2 systemd timers?" "y"; then
+            systemctl stop seraphc2-* 2>/dev/null || true
+            systemctl disable seraphc2-* 2>/dev/null || true
+            rm -f /etc/systemd/system/seraphc2-*.timer
+            rm -f /etc/systemd/system/seraphc2-*.service
+            systemctl daemon-reload
+            cleaned=true
+        fi
+    fi
+    
+    # Check for leftover environment files
+    local env_files=(
+        "/etc/environment.d/*seraphc2*"
+        "/etc/profile.d/*seraphc2*"
+        "${CONFIG[app_dir]}/.env*"
+    )
+    
+    for pattern in "${env_files[@]}"; do
+        if ls $pattern >/dev/null 2>&1; then
+            log_warning "Found leftover environment files: $pattern"
+            if confirm_action "Remove leftover environment files?" "y"; then
+                rm -f $pattern
+                cleaned=true
+            fi
+        fi
+    done
+    
+    # Check for leftover SSL certificates in other locations
+    local ssl_locations=(
+        "/etc/ssl/certs/*seraphc2*"
+        "/etc/ssl/private/*seraphc2*"
+        "/usr/local/share/ca-certificates/*seraphc2*"
+    )
+    
+    for pattern in "${ssl_locations[@]}"; do
+        if ls $pattern >/dev/null 2>&1; then
+            log_warning "Found leftover SSL certificates: $pattern"
+            if confirm_action "Remove leftover SSL certificates?" "y"; then
+                rm -f $pattern
+                cleaned=true
+            fi
+        fi
+    done
+    
+    # Check for leftover npm global packages
+    if command -v npm >/dev/null 2>&1; then
+        if npm list -g --depth=0 2>/dev/null | grep -q "seraphc2"; then
+            log_warning "Found globally installed SeraphC2 npm packages"
+            if confirm_action "Remove global SeraphC2 npm packages?" "y"; then
+                npm uninstall -g seraphc2 2>/dev/null || true
+                cleaned=true
+            fi
+        fi
+    fi
+    
+    return $([[ "$cleaned" == "true" ]] && echo 0 || echo 1)
+}
+
+# Validate that the system is ready for installation after cleanup
+validate_pre_installation_state() {
+    log_debug "Validating pre-installation state..."
+    
+    local validation_errors=0
+    
+    # Ensure required ports are available
+    local required_ports=("${CONFIG[http_port]}" "${CONFIG[https_port]}" "${CONFIG[implant_port]}")
+    for port in "${required_ports[@]}"; do
+        if [[ -n "$port" ]] && netstat -tln 2>/dev/null | grep -q ":$port "; then
+            local service=$(netstat -tlnp 2>/dev/null | grep ":$port " | awk '{print $7}' | cut -d'/' -f2 | head -n1)
+            if [[ -n "$service" && "$service" != "postgres" && "$service" != "redis-server" ]]; then
+                log_error "Port $port is still in use by $service after cleanup"
+                ((validation_errors++))
+            fi
+        fi
+    done
+    
+    # Ensure no SeraphC2 processes are running
+    if pgrep -f "seraphc2" >/dev/null 2>&1; then
+        log_error "SeraphC2 processes are still running after cleanup"
+        ((validation_errors++))
+    fi
+    
+    # Ensure systemd service is not present
+    if systemctl list-unit-files | grep -q "seraphc2.service"; then
+        log_error "SeraphC2 systemd service still exists after cleanup"
+        ((validation_errors++))
+    fi
+    
+    # Ensure directories are either clean or don't exist
+    for dir in "${CONFIG[app_dir]}" "${CONFIG[config_dir]}"; do
+        if [[ -d "$dir" ]] && [[ -n "$(ls -A "$dir" 2>/dev/null)" ]]; then
+            if [[ ! -f "$dir/package.json" ]] || ! grep -q "seraphc2" "$dir/package.json" 2>/dev/null; then
+                log_error "Directory $dir contains non-SeraphC2 files after cleanup"
+                ((validation_errors++))
+            fi
+        fi
+    done
+    
+    # Check write permissions for installation directories
+    local parent_dirs=("$(dirname "${CONFIG[app_dir]}")" "$(dirname "${CONFIG[config_dir]}")" "$(dirname "${CONFIG[log_dir]}")")
+    for dir in "${parent_dirs[@]}"; do
+        if [[ ! -w "$dir" ]]; then
+            log_error "No write permission for directory: $dir"
+            ((validation_errors++))
+        fi
+    done
+    
+    if [[ $validation_errors -eq 0 ]]; then
+        log_debug "Pre-installation validation passed"
+        return 0
+    else
+        log_error "Pre-installation validation failed with $validation_errors errors"
+        return 1
+    fi
 }
 
 # Display detected system information
@@ -10987,6 +11531,80 @@ build_application() {
     return 0
 }
 
+# Fix CommandRouter initialization issue
+fix_command_router_initialization() {
+    local app_dir="${CONFIG[app_dir]}"
+    local service_user="${CONFIG[service_user]}"
+    
+    log_info "Applying CommandRouter initialization fix..."
+    
+    # Change to application directory
+    cd "$app_dir" || {
+        log_error "Failed to change to application directory: $app_dir"
+        return 1
+    }
+    
+    # Check if the server.ts file needs the CommandRouter fix
+    local server_file="$app_dir/src/web/server.ts"
+    if [[ -f "$server_file" ]]; then
+        # Check if the fix is already applied
+        if grep -q "this.commandRouter = new CommandRouter" "$server_file"; then
+            log_info "CommandRouter fix already applied"
+            return 0
+        fi
+        
+        # Apply the fix by updating the server.ts file
+        log_info "Applying CommandRouter fix to server.ts..."
+        
+        # Create a backup of the original file
+        cp "$server_file" "$server_file.backup" || {
+            log_warning "Failed to create backup of server.ts"
+        }
+        
+        # Apply the fixes using sed
+        # 1. Add CommandRouter import
+        sed -i '/import { CommandManager } from/i import { CommandRouter } from '\''../core/engine/command-router'\'';' "$server_file"
+        
+        # 2. Add commandRouter property
+        sed -i '/private commandManager: CommandManager;/i \  private commandRouter: CommandRouter;' "$server_file"
+        
+        # 3. Fix the initialization
+        sed -i 's/this\.commandManager = new CommandManager(/this.commandRouter = new CommandRouter(this.implantManager);\
+    this.commandManager = new CommandManager(/g' "$server_file"
+        
+        # 4. Replace the placeholder with proper initialization
+        sed -i 's/{} as any,/this.commandRouter,/g' "$server_file"
+        
+        # 5. Add commandRouter.stop() to shutdown
+        sed -i '/this\.commandManager\.stop();/i \          this.commandRouter.stop();' "$server_file"
+        
+        # Rebuild the application with the fix
+        log_info "Rebuilding application with CommandRouter fix..."
+        start_spinner "Rebuilding application"
+        
+        if ! sudo -u "$service_user" npm run build; then
+            stop_spinner
+            log_error "Failed to rebuild application with CommandRouter fix"
+            # Restore backup if rebuild fails
+            if [[ -f "$server_file.backup" ]]; then
+                mv "$server_file.backup" "$server_file"
+                log_info "Restored original server.ts file"
+            fi
+            return 1
+        fi
+        
+        stop_spinner
+        log_success "Application rebuilt successfully with CommandRouter fix"
+        
+        # Remove backup file
+        rm -f "$server_file.backup"
+    else
+        log_warning "server.ts file not found, skipping CommandRouter fix"
+    fi
+    
+    return 0
+}
+
 # Set up application file permissions and ownership
 setup_application_permissions() {
     local app_dir="${CONFIG[app_dir]}"
@@ -11177,19 +11795,25 @@ deploy_seraphc2_application() {
         return $E_SERVICE_ERROR
     fi
     
-    # Step 4: Build application
+    # Step 4: Fix CommandRouter initialization issue
+    if ! fix_command_router_initialization; then
+        log_error "Failed to apply CommandRouter fix"
+        return $E_SERVICE_ERROR
+    fi
+    
+    # Step 5: Build application
     if ! build_application; then
         log_error "Failed to build application"
         return $E_SERVICE_ERROR
     fi
     
-    # Step 5: Set up permissions
+    # Step 6: Set up permissions
     if ! setup_application_permissions; then
         log_error "Failed to set up application permissions"
         return $E_SERVICE_ERROR
     fi
     
-    # Step 6: Validate deployment
+    # Step 7: Validate deployment
     if ! validate_application_deployment; then
         log_error "Application deployment validation failed"
         return $E_SERVICE_ERROR
@@ -11376,7 +12000,8 @@ enable_and_start_service() {
         done
         
         if [[ "$redis_started" != "true" ]]; then
-            log_warning "Failed to start Redis service - SeraphC2 may not function properly"
+            log_warning "Failed to start Redis service - SeraphC2 will work without Redis"
+            log_info "Redis is not currently required for SeraphC2 functionality"
         fi
     fi
     
@@ -11402,8 +12027,31 @@ enable_and_start_service() {
         # Try to diagnose the issue
         log_info "Attempting to diagnose service startup issue..."
         
+        # Check if it's a CommandRouter initialization error
+        if journalctl -u "$service_name" --no-pager -l -n 20 | grep -q "this.commandRouter.on is not a function"; then
+            log_error "CommandRouter initialization error detected"
+            log_info "This indicates the CommandRouter fix was not applied correctly"
+            log_info "Attempting to reapply the CommandRouter fix..."
+            
+            # Try to reapply the fix
+            if fix_command_router_initialization; then
+                log_info "CommandRouter fix reapplied, restarting service..."
+                systemctl restart "$service_name" || true
+                sleep 5
+                
+                if systemctl is-active "$service_name" >/dev/null 2>&1; then
+                    log_success "Service started successfully after CommandRouter fix"
+                    return 0
+                else
+                    log_error "Service still failed to start after CommandRouter fix"
+                    return $E_SERVICE_ERROR
+                fi
+            else
+                log_error "Failed to reapply CommandRouter fix"
+                return $E_SERVICE_ERROR
+            fi
         # Check if it's a database migration conflict (42P07 error)
-        if journalctl -u "$service_name" --no-pager -l -n 20 | grep -q "42P07\|already exists\|relation.*already exists"; then
+        elif journalctl -u "$service_name" --no-pager -l -n 20 | grep -q "42P07\|already exists\|relation.*already exists"; then
             log_warning "Database migration conflict detected - tables already exist"
             log_info "This is likely because migrations were run during setup"
             
@@ -17137,13 +17785,15 @@ execute_main_installation() {
     show_step 3 9 "Setting up PostgreSQL database"
     setup_postgresql_database
     
-    # Step 4: Setup Redis (already implemented in previous tasks)
+    # Step 4: Setup Redis (optional - not currently used by SeraphC2)
     show_step 4 9 "Setting up Redis cache"
     if ! setup_redis_cache; then
-        log_error "Redis cache setup failed"
-        log_warning "Redis is required for SeraphC2 to function properly"
-        log_info "Installation will continue but Redis must be fixed before SeraphC2 can start"
+        log_warning "Redis cache setup failed - continuing without Redis"
+        log_info "Redis is not currently required for SeraphC2 to function"
+        log_info "SeraphC2 will work without Redis cache"
         REDIS_SETUP_FAILED="true"
+    else
+        log_success "Redis cache setup completed successfully"
     fi
     
     # Step 5: Initialize database schema (run migrations after database is set up)
@@ -17279,6 +17929,21 @@ main() {
             log_success "Maintenance tasks completed successfully"
             exit 0
             ;;
+        "cleanup-only")
+            log_info "Cleanup-only mode selected"
+            log_info "Performing comprehensive system cleanup without installation..."
+            
+            # Run only the cleanup process
+            if ! perform_pre_installation_cleanup; then
+                log_error "Cleanup process failed"
+                exit 1
+            fi
+            
+            log_success "System cleanup completed successfully"
+            log_info "System is now ready for a fresh SeraphC2 installation"
+            log_info "Run the script again without --cleanup-only to install SeraphC2"
+            exit 0
+            ;;
     esac
     
     # Check if Docker deployment is requested
@@ -17358,12 +18023,14 @@ main() {
         exit $E_DATABASE_ERROR
     fi
     
-    # Redis cache setup (Task 9) - REQUIRED
+    # Redis cache setup (Task 9) - OPTIONAL
     if ! setup_redis_cache; then
-        log_error "Redis cache setup failed"
-        log_warning "Redis is required for SeraphC2 to function properly"
-        log_info "Installation will continue but Redis must be fixed before SeraphC2 can start"
+        log_warning "Redis cache setup failed - continuing without Redis"
+        log_info "Redis is not currently required for SeraphC2 to function"
+        log_info "SeraphC2 will work without Redis cache"
         REDIS_SETUP_FAILED="true"
+    else
+        log_success "Redis cache setup completed successfully"
     fi
     
     # Database migration and initialization (Task 12) - IMPLEMENTED
