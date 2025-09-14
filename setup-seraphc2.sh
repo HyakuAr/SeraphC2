@@ -11666,6 +11666,7 @@ setup_application_permissions() {
     local config_dir="${CONFIG[config_dir]}"
     
     log_info "Setting up application file permissions..."
+    log_verbose "This may take a moment for large applications with many files..."
     
     # Create and set up log directory first
     if ! mkdir -p "$log_dir"; then
@@ -11686,26 +11687,23 @@ setup_application_permissions() {
     fi
     
     # Set ownership for all application files
+    log_verbose "Setting ownership for application files..."
     if ! chown -R "$service_user:$service_user" "$app_dir"; then
         log_error "Failed to set ownership for application directory"
         return 1
     fi
     
-    # Set directory permissions
-    find "$app_dir" -type d -exec chmod 755 {} \; || {
-        log_error "Failed to set directory permissions"
+    # Set permissions efficiently using single find command
+    log_verbose "Setting file and directory permissions..."
+    find "$app_dir" \( -type d -exec chmod 755 {} + \) -o \( -type f -exec chmod 644 {} + \) || {
+        log_error "Failed to set file and directory permissions"
         return 1
     }
     
-    # Set file permissions
-    find "$app_dir" -type f -exec chmod 644 {} \; || {
-        log_error "Failed to set file permissions"
-        return 1
-    }
-    
-    # Set executable permissions for scripts
+    # Set executable permissions for scripts (optimized)
     if [[ -d "$app_dir/scripts" ]]; then
-        find "$app_dir/scripts" -name "*.sh" -exec chmod 755 {} \; || {
+        log_verbose "Setting executable permissions for shell scripts..."
+        find "$app_dir/scripts" -name "*.sh" -exec chmod 755 {} + || {
             log_warning "Failed to set executable permissions for shell scripts"
         }
     fi
