@@ -74,6 +74,7 @@ declare -A CONFIG=(
     ["enable_hardening"]="false"
     ["debug_mode"]="false"
     ["verbose"]="false"
+    ["no_kill_processes"]="false"      # Don't automatically kill processes using required ports
     
     # Network configuration
     ["domain"]="localhost"              # Default domain name
@@ -627,6 +628,12 @@ perform_rollback() {
         fi
     fi
     
+    # 8.5. Display information about killed processes
+    if [[ -n "${INSTALL_STATE[killed_processes]}" ]]; then
+        log_info "Displaying information about killed processes..."
+        rollback_killed_processes  # This function only displays info, doesn't fail
+    fi
+    
     # 9. Rollback Docker deployment (if applicable)
     if [[ "${INSTALL_STATE[docker_deployed]}" == "true" ]]; then
         log_info "Rolling back Docker deployment..."
@@ -1094,6 +1101,43 @@ rollback_created_directories() {
         log_warning "Directory rollback completed with $rollback_errors errors"
         return 1
     fi
+}
+
+# Rollback killed processes (informational only - processes cannot be restored)
+rollback_killed_processes() {
+    local killed_processes="${INSTALL_STATE[killed_processes]}"
+    
+    if [[ -z "$killed_processes" ]]; then
+        log_debug "No processes were killed during installation"
+        return 0
+    fi
+    
+    log_warning "The following processes were killed during installation: $killed_processes"
+    log_warning "Note: Killed processes cannot be automatically restored"
+    log_info "You may need to manually restart these services if they were important:"
+    
+    # Parse the killed processes and provide restart suggestions
+    for pid in $killed_processes; do
+        log_info "  - Process PID $pid was terminated"
+        
+        # Try to provide helpful restart suggestions based on common process types
+        if [[ -f "/proc/$pid/comm" ]] 2>/dev/null; then
+            # Process is still running somehow, this shouldn't happen
+            log_warning "    Process $pid appears to still be running"
+        else
+            log_info "    If this was a system service, you may need to restart it manually"
+            log_info "    Common restart commands:"
+            log_info "      - For Node.js apps: npm start or yarn start"
+            log_info "      - For Python apps: python app.py or python3 app.py"
+            log_info "      - For system services: sudo systemctl start <service-name>"
+        fi
+    done
+    
+    # Clear the killed processes list from installation state
+    INSTALL_STATE[killed_processes]=""
+    
+    log_debug "Killed processes rollback information displayed"
+    return 0
 }
 
 # Rollback Docker deployment
@@ -3890,6 +3934,19 @@ OPTIONS:
     --domain=DOMAIN        Set the domain name for the C2 server
                            Default: localhost
 
+    --http-port=PORT       Set HTTP port for web interface
+                           Default: 3000
+
+    --https-port=PORT      Set HTTPS port for secure web interface
+                           Default: 8443
+
+    --implant-port=PORT    Set port for implant communication
+                           Default: 8080
+
+    --no-kill-processes    Don't automatically kill processes using required ports
+                           Script will exit with error if ports are in use
+                           Default: Automatically stop conflicting processes
+
     --ssl-type=TYPE        Set SSL certificate type (self-signed, letsencrypt, custom)
                            Default: self-signed
 
@@ -4159,6 +4216,9 @@ parse_arguments() {
                     echo "Error: Invalid implant port: $port" >&2
                     exit $E_VALIDATION_ERROR
                 fi
+                ;;
+            --no-kill-processes)
+                CONFIG[no_kill_processes]="true"
                 ;;
             --ssl-type=*)
                 local ssl_type="${arg#*=}"
@@ -8235,7 +8295,7 @@ check_network_connectivity() {
     return 0
 }
 
-# Check if ports are available
+# Check if ports are available and handle conflicts
 check_port_availability() {
     log_debug "Checking port availability..."
     
@@ -8254,14 +8314,44 @@ check_port_availability() {
     done
     
     if [[ ${#unavailable_ports[@]} -gt 0 ]]; then
-        log_error "The following ports are already in use:"
+        log_warning "The following ports are already in use:"
         for port in "${unavailable_ports[@]}"; do
             local process_info=$(get_port_process_info "$port")
-            log_error "  Port $port: $process_info"
+            log_warning "  Port $port: $process_info"
         done
-        log_error "Please stop the services using these ports or choose different ports"
-        log_error "Use --http-port, --https-port, and --implant-port options to specify different ports"
-        exit $E_VALIDATION_ERROR
+        
+        # Check if automatic port conflict resolution is disabled
+        if [[ "${CONFIG[no_kill_processes]}" == "true" ]]; then
+            log_error "Automatic port conflict resolution is disabled (--no-kill-processes)"
+            log_error "Please stop the services using these ports or choose different ports"
+            log_error "Use --http-port, --https-port, and --implant-port options to specify different ports"
+            exit $E_VALIDATION_ERROR
+        fi
+        
+        # Attempt to automatically resolve port conflicts
+        if handle_port_conflicts "${unavailable_ports[@]}"; then
+            log_success "Port conflicts resolved successfully"
+            
+            # Re-check port availability after conflict resolution
+            local remaining_conflicts=()
+            for port in "${unavailable_ports[@]}"; do
+                if check_port_in_use "$port"; then
+                    remaining_conflicts+=("$port")
+                fi
+            done
+            
+            if [[ ${#remaining_conflicts[@]} -gt 0 ]]; then
+                log_error "Failed to resolve conflicts for ports: ${remaining_conflicts[*]}"
+                log_error "Please manually stop the services or choose different ports"
+                log_error "Use --http-port, --https-port, and --implant-port options to specify different ports"
+                exit $E_VALIDATION_ERROR
+            fi
+        else
+            log_error "Failed to resolve port conflicts automatically"
+            log_error "Please stop the services using these ports or choose different ports"
+            log_error "Use --http-port, --https-port, and --implant-port options to specify different ports"
+            exit $E_VALIDATION_ERROR
+        fi
     fi
     
     log_success "All required ports are available"
@@ -8329,6 +8419,156 @@ get_port_process_info() {
     fi
     
     echo "$process_info"
+}
+
+# Get PID of process using a specific port
+get_port_pid() {
+    local port="$1"
+    local pid=""
+    
+    # Try to get PID using lsof (most reliable)
+    if command -v lsof >/dev/null 2>&1; then
+        pid=$(lsof -i ":$port" -t 2>/dev/null | head -1)
+        if [[ -n "$pid" ]]; then
+            echo "$pid"
+            return 0
+        fi
+    fi
+    
+    # Fallback to netstat
+    if command -v netstat >/dev/null 2>&1; then
+        local netstat_output
+        netstat_output=$(netstat -tulnp 2>/dev/null | grep ":$port " | head -1)
+        if [[ -n "$netstat_output" ]]; then
+            pid=$(echo "$netstat_output" | awk '{print $7}' | cut -d'/' -f1)
+            if [[ -n "$pid" && "$pid" != "-" && "$pid" =~ ^[0-9]+$ ]]; then
+                echo "$pid"
+                return 0
+            fi
+        fi
+    fi
+    
+    # Fallback to ss
+    if command -v ss >/dev/null 2>&1; then
+        local ss_output
+        ss_output=$(ss -tulnp 2>/dev/null | grep ":$port " | head -1)
+        if [[ -n "$ss_output" ]]; then
+            # Extract PID from ss output (format: users:(("process",pid=1234,fd=5)))
+            pid=$(echo "$ss_output" | grep -o 'pid=[0-9]*' | cut -d'=' -f2 | head -1)
+            if [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]]; then
+                echo "$pid"
+                return 0
+            fi
+        fi
+    fi
+    
+    return 1
+}
+
+# Handle port conflicts by attempting to stop conflicting services
+handle_port_conflicts() {
+    local ports=("$@")
+    local conflicts_resolved=true
+    local killed_pids=()
+    
+    log_info "Attempting to resolve port conflicts automatically..."
+    
+    for port in "${ports[@]}"; do
+        local process_info=$(get_port_process_info "$port")
+        local pid=$(get_port_pid "$port")
+        
+        if [[ -n "$pid" ]]; then
+            log_info "Attempting to stop process using port $port: $process_info"
+            
+            # Check if it's a system service first
+            local service_name=""
+            if [[ -f "/proc/$pid/comm" ]]; then
+                local process_name=$(cat "/proc/$pid/comm" 2>/dev/null)
+                
+                # Check if it's a known service that we can stop gracefully
+                case "$process_name" in
+                    "node"|"nodejs"|"npm"|"yarn")
+                        log_info "Detected Node.js process on port $port, attempting graceful shutdown..."
+                        ;;
+                    "python"|"python3")
+                        log_info "Detected Python process on port $port, attempting graceful shutdown..."
+                        ;;
+                    "java")
+                        log_info "Detected Java process on port $port, attempting graceful shutdown..."
+                        ;;
+                    *)
+                        log_info "Detected process '$process_name' on port $port, attempting to stop..."
+                        ;;
+                esac
+            fi
+            
+            # Try graceful shutdown first (SIGTERM)
+            if kill -TERM "$pid" 2>/dev/null; then
+                log_info "Sent SIGTERM to process $pid, waiting for graceful shutdown..."
+                
+                # Wait up to 10 seconds for graceful shutdown
+                local wait_count=0
+                while [[ $wait_count -lt 10 ]] && kill -0 "$pid" 2>/dev/null; do
+                    sleep 1
+                    ((wait_count++))
+                done
+                
+                # Check if process is still running
+                if kill -0 "$pid" 2>/dev/null; then
+                    log_warning "Process $pid did not respond to SIGTERM, using SIGKILL..."
+                    if kill -KILL "$pid" 2>/dev/null; then
+                        log_info "Successfully killed process $pid using SIGKILL"
+                        killed_pids+=("$pid")
+                    else
+                        log_error "Failed to kill process $pid"
+                        conflicts_resolved=false
+                        continue
+                    fi
+                else
+                    log_success "Process $pid terminated gracefully"
+                    killed_pids+=("$pid")
+                fi
+            else
+                log_warning "Failed to send SIGTERM to process $pid, trying SIGKILL..."
+                if kill -KILL "$pid" 2>/dev/null; then
+                    log_info "Successfully killed process $pid using SIGKILL"
+                    killed_pids+=("$pid")
+                else
+                    log_error "Failed to kill process $pid (may require manual intervention)"
+                    conflicts_resolved=false
+                    continue
+                fi
+            fi
+            
+            # Wait a moment for the port to be released
+            sleep 2
+            
+            # Verify the port is now free
+            if check_port_in_use "$port"; then
+                log_warning "Port $port is still in use after stopping process $pid"
+                conflicts_resolved=false
+            else
+                log_success "Port $port is now available"
+            fi
+        else
+            log_warning "Could not determine PID for process using port $port"
+            conflicts_resolved=false
+        fi
+    done
+    
+    # Log summary of killed processes
+    if [[ ${#killed_pids[@]} -gt 0 ]]; then
+        log_info "Stopped the following processes to resolve port conflicts: ${killed_pids[*]}"
+        track_install_state "killed_processes" "${killed_pids[*]}"
+    fi
+    
+    if [[ "$conflicts_resolved" == "true" ]]; then
+        log_success "All port conflicts resolved successfully"
+        return 0
+    else
+        log_error "Some port conflicts could not be resolved automatically"
+        return 1
+    fi
 }
 
 # Validate PostgreSQL compatibility for the current OS
