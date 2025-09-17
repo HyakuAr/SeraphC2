@@ -1,18 +1,24 @@
 import axios from 'axios';
 import { User } from '../store/slices/authSlice';
+import { getApiUrl, resetApiUrl } from './apiDiscovery';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
-
+// Create axios instance with dynamic base URL
 const api = axios.create({
-  baseURL: `${API_BASE_URL}/api`,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request interceptor to add auth token
+// Request interceptor to set dynamic base URL and add auth token
 api.interceptors.request.use(
-  config => {
+  async config => {
+    // Set the base URL dynamically
+    if (!config.baseURL) {
+      const apiUrl = await getApiUrl();
+      config.baseURL = `${apiUrl}/api`;
+    }
+
+    // Add auth token
     const token = localStorage.getItem('seraph_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -24,12 +30,23 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle token refresh
+// Response interceptor to handle token refresh and connection errors
 api.interceptors.response.use(
   response => response,
   async error => {
     const originalRequest = error.config;
 
+    // Handle connection errors by retrying API discovery
+    if (error.code === 'ERR_NETWORK' || error.code === 'ECONNREFUSED') {
+      if (!originalRequest._apiRetry) {
+        originalRequest._apiRetry = true;
+        console.warn('🔄 Connection failed, retrying with API discovery...');
+        resetApiUrl(); // Reset cached URL to force rediscovery
+        return api(originalRequest);
+      }
+    }
+
+    // Handle 401 unauthorized
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 

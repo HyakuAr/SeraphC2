@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import { initializeDatabase } from './core/database';
 import { SeraphC2Server, ServerConfig } from './web/server';
 import { PostgresOperatorRepository } from './core/repositories/operator.repository';
+import { getServerPort } from './utils/portUtils';
 
 // Load environment variables
 dotenv.config();
@@ -26,9 +27,12 @@ async function main(): Promise<void> {
     // Initialize repositories
     const operatorRepository = new PostgresOperatorRepository();
 
+    // Get available port with automatic fallback
+    const port = await getServerPort();
+
     // Configure HTTP server
     const serverConfig: ServerConfig = {
-      port: parseInt(process.env['HTTP_PORT'] || '3000'),
+      port,
       host: process.env['HTTP_HOST'] || '0.0.0.0',
       corsOrigins: process.env['CORS_ORIGINS']?.split(',') || [
         'http://localhost:3000',
